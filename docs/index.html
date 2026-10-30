@@ -57,6 +57,8 @@ type Config = {
   nota_minima: number; // para "ganar" la materia (ej: 3.0)
   nota_ok: number; // rango de color ámbar->verde (ej: 4.0)
   archivados: string[]; // semestres archivados
+  activo: string; // semestre activo (el único que se muestra)
+  semestres: string[]; // lista de semestres registrados
 };
 
 // Paleta de colores cíclica por materia
@@ -74,7 +76,7 @@ const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "
  */
 const DB_KEY = "seguidor-notas-db";
 
-const CONFIG_DEFAULT: Config = { dark: false, nota_minima: 3.0, nota_ok: 4.0, archivados: [] };
+const CONFIG_DEFAULT: Config = { dark: false, nota_minima: 3.0, nota_ok: 4.0, archivados: [], activo: "", semestres: [] };
 
 const DB_SCHEMA = {
   materias: [] as Materia[],
@@ -93,6 +95,14 @@ const MiniDB = {
         const p = JSON.parse(raw);
         // Merge de la config: defaults + campos guardados (compatibilidad hacia atrás)
         const cfg = { ...CONFIG_DEFAULT, ...(p.config?.[0] || {}) };
+        // Migración: derivar la lista de semestres de las materias existentes
+        // y elegir el último como activo (compatibilidad con datos antiguos)
+        if (!cfg.semestres || cfg.semestres.length === 0) {
+          cfg.semestres = [...new Set((p.materias || []).map((m: any) => m.semestre || "Sin semestre"))];
+        }
+        if (!cfg.activo || !cfg.semestres.includes(cfg.activo)) {
+          cfg.activo = cfg.semestres.slice().sort()[cfg.semestres.length - 1] || "";
+        }
         return { ...DB_SCHEMA, ...p, config: [cfg] };
       }
     } catch {}
@@ -327,17 +337,20 @@ function exportarCSV(data: any) {
 // ==================== PESTAÑA MATERIAS ====================
 
 /**
- * Vista principal: crear materias, búsqueda, carpetas por semestre
- * (plegables + archivables), próximas entregas, notas y exportación CSV.
+ * Vista de materias del SEMESTRE ACTIVO (se elige en el encabezado):
+ * crear materias dentro de ese semestre, búsqueda, archivar/restaurar,
+ * próximas entregas, notas y exportación CSV.
  */
 function TabMaterias({ data, refresh, t }: any) {
-  const [form, setForm] = useState({ nombre: "", profesor: "", creditos: 3, semestre: "2026-2" });
+  const [form, setForm] = useState({ nombre: "", profesor: "", creditos: 3 });
   const [q, setQ] = useState("");
-  const [abierto, setAbierto] = useState<Record<string, boolean>>({});
-  const [verArchivados, setVerArchivados] = useState(false);
   const cfg: Config = data.config[0];
+  const activo = cfg.activo;
+  const arch: string[] = cfg.archivados || [];
 
+  // Las materias nuevas nacen dentro del semestre activo
   const agregar = () => {
+    if (!activo) { alert("⚠️ Primero crea un semestre: elige ➕ Añadir semestre… en el encabezado."); return; }
     if (!form.nombre.trim()) return;
     MiniDB.insert<Materia>("materias", {
       id: uid(),
@@ -345,9 +358,9 @@ function TabMaterias({ data, refresh, t }: any) {
       profesor: form.profesor.trim(),
       creditos: Number(form.creditos) || 0,
       color: COLORS[MiniDB.find<Materia>("materias").length % COLORS.length],
-      semestre: form.semestre.trim() || "Sin semestre",
+      semestre: activo,
     });
-    setForm({ nombre: "", profesor: "", creditos: 3, semestre: form.semestre.trim() });
+    setForm({ nombre: "", profesor: "", creditos: 3 });
     refresh();
   };
 
@@ -359,41 +372,75 @@ function TabMaterias({ data, refresh, t }: any) {
     refresh();
   };
 
-  // Archivar / restaurar un semestre (se guarda en config.archivados)
-  const toggleArchivo = (sem: string) => {
-    const a: string[] = cfg.archivados || [];
-    MiniDB.saveConfig({ archivados: a.includes(sem) ? a.filter((x) => x !== sem) : [...a, sem] });
+  // Archivar / restaurar el semestre activo
+  const toggleArchivo = () => {
+    MiniDB.saveConfig({ archivados: arch.includes(activo) ? arch.filter((x) => x !== activo) : [...arch, activo] });
     refresh();
   };
 
-  // Filtro de búsqueda
+  // Filtro de búsqueda (nombre y profesor)
   const coincide = (m: Materia) =>
-    !q.trim() ||
-    (m.nombre + " " + m.profesor + " " + (m.semestre || "")).toLowerCase().includes(q.trim().toLowerCase());
+    !q.trim() || (m.nombre + " " + m.profesor).toLowerCase().includes(q.trim().toLowerCase());
 
-  // Carpetas visibles: excluye archivados salvo que se pidan ver
-  const todos = (data.materias as Materia[]).filter(coincide);
-  const arch = cfg.archivados || [];
-  const sems = [...new Set(todos.map((m) => m.semestre || "Sin semestre"))]
-    .sort()
-    .filter((s) => verArchivados || !arch.includes(s));
-  const hayArchivados = [...new Set((data.materias as Materia[]).map((m) => m.semestre || "Sin semestre"))].some((s) => arch.includes(s));
+  // Materias del semestre activo
+  const todos = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === activo).filter(coincide);
+  const psem = promedioSemestre(data, activo);
+  const archivado = arch.includes(activo);
 
-  // Próximas entregas: 5 notas con fecha más cercana
+  // Sin semestres aún: guiar al selector del encabezado
+  if (!activo) {
+    return (
+      <div className={"rounded-3xl border-2 border-dashed p-10 text-center " + t.card}>
+        <div className="text-5xl mb-3">📂</div>
+        <h2 className={"text-xl font-bold " + t.text}>Aún no hay semestres</h2>
+        <p className={"text-sm mt-2 " + t.sub}>
+          Crea tu primer semestre con la opción "➕ Añadir semestre…" del encabezado. Luego añade materias aquí.
+        </p>
+      </div>
+    );
+  }
+
+  // Próximas entregas: 5 notas con fecha más cercana (solo del semestre activo)
+  const idsActivos = new Set((data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === activo).map((m) => m.id));
   const proximas = (data.notas as Nota[])
-    .filter((n) => n.fecha && diasHasta(n.fecha) !== null)
+    .filter((n) => n.fecha && idsActivos.has(n.materiaId))
     .sort((a, b) => (a.fecha! < b.fecha! ? -1 : 1))
     .slice(0, 5);
 
   return (
     <div className="space-y-5">
-      {/* --- Crear materia + exportar CSV --- */}
+      {/* --- Encabezado del semestre activo --- */}
+      <div className={"flex flex-wrap items-center justify-between gap-2 border-b-2 pb-1 " + t.h2}>
+        <h2 className="text-lg font-bold">
+          {archivado ? "🗄️" : "📂"} {activo}
+          <span className={"text-sm font-normal " + t.sub}> · {todos.length} materia{todos.length === 1 ? "" : "s"}</span>
+        </h2>
+        <div className="flex items-center gap-2">
+          {psem !== null && (
+            <span className={"px-3 py-1 rounded-full text-sm font-bold " + estadoBg(psem, cfg, t)}>
+              Prom. semestre: {psem.toFixed(2)}
+            </span>
+          )}
+          <button onClick={toggleArchivo} className={t.faint + " hover:text-indigo-400 text-sm"}
+            title={archivado ? "Restaurar semestre" : "Archivar semestre"}>
+            {archivado ? "📂 Restaurar" : "🗄️ Archivar semestre"}
+          </button>
+        </div>
+      </div>
+
+      {archivado && (
+        <div className={"rounded-xl px-4 py-2 text-sm " + t.warnBg}>
+          🗄️ Semestre archivado (solo consulta). Pulsa "Restaurar" para volver a trabajarlo.
+        </div>
+      )}
+
+      {/* --- Crear materia (dentro del semestre activo) + exportar CSV --- */}
       <div className={cardBase + " " + t.card}>
         <div className="flex items-center justify-between mb-3">
-          <h2 className={"font-bold " + t.text}>➕ Crear materia</h2>
+          <h2 className={"font-bold " + t.text}>➕ Crear materia en {activo}</h2>
           <Btn t={t} tone="soft" onClick={() => exportarCSV(data)}>⬇️ Exportar CSV/Excel</Btn>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <div className="sm:col-span-2">
             <span className={labelBase + " " + t.sub}>Nombre</span>
             <input className={inputBase + " " + t.input} value={form.nombre}
@@ -407,31 +454,19 @@ function TabMaterias({ data, refresh, t }: any) {
           </div>
           <div>
             <span className={labelBase + " " + t.sub}>Créditos</span>
-            <input className={inputBase + " " + t.input} type="number" min={0} value={form.creditos}
-              onChange={(e) => setForm({ ...form, creditos: e.target.value })} />
-          </div>
-          <div>
-            <span className={labelBase + " " + t.sub}>Semestre</span>
             <div className="flex gap-2">
-              <input className={inputBase + " " + t.input} placeholder="2026-2" value={form.semestre}
-                onChange={(e) => setForm({ ...form, semestre: e.target.value })} />
+              <input className={inputBase + " " + t.input} type="number" min={0} value={form.creditos}
+                onChange={(e) => setForm({ ...form, creditos: e.target.value })} />
               <Btn t={t} onClick={agregar}>Añadir</Btn>
             </div>
           </div>
         </div>
       </div>
 
-      {/* --- Búsqueda + ver archivados --- */}
+      {/* --- Búsqueda --- */}
       <div className={cardBase + " " + t.card}>
-        <div className="flex gap-2">
-          <input className={inputBase + " " + t.input} placeholder="🔍 Buscar materia, profesor o semestre…"
-            value={q} onChange={(e) => setQ(e.target.value)} />
-          {hayArchivados && (
-            <Btn t={t} tone="soft" onClick={() => setVerArchivados(!verArchivados)}>
-              {verArchivados ? "🙈 Ocultar archivados" : "🗄️ Ver archivados"}
-            </Btn>
-          )}
-        </div>
+        <input className={inputBase + " " + t.input} placeholder="🔍 Buscar materia o profesor…"
+          value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
 
       {/* --- Próximas entregas --- */}
@@ -455,97 +490,71 @@ function TabMaterias({ data, refresh, t }: any) {
         </Fade>
       )}
 
-      {/* --- Carpetas de semestre --- */}
-      {sems.map((sem) => {
-        const abierta = abierto[sem] !== false;
-        const mats = todos.filter((m) => (m.semestre || "Sin semestre") === sem);
-        const psem = promedioSemestre(data, sem);
-        const archivado = arch.includes(sem);
+      {/* --- Materias del semestre activo --- */}
+      {todos.length === 0 && (
+        <div className={cardBase + " " + t.card + " " + t.sub + " text-sm"}>
+          Todavía no hay materias en este semestre. Crea la primera arriba. 👆
+        </div>
+      )}
+      {todos.map((m: Materia) => {
+        const ns = MiniDB.find<Nota>("notas", (n) => n.materiaId === m.id);
+        const p = promedio(data.notas, m.id);
+        const c = calculo(ns, cfg.nota_minima);
         return (
-          <div key={sem} className="space-y-3">
-            {/* Encabezado-carpeta: plegar + promedio + archivar */}
-            <div className={"flex items-center justify-between gap-2 border-b-2 pb-1 " + t.h2}>
-              <button onClick={() => setAbierto({ ...abierto, [sem]: !abierta })}
-                className="flex items-center gap-2 text-lg font-bold text-left">
-                {archivado ? "🗄️" : abierta ? "📂" : "📁"} {sem}
-                <span className={"text-sm font-normal " + t.sub}>({mats.length})</span>
-              </button>
-              <div className="flex items-center gap-2">
-                {psem !== null && (
-                  <span className={"px-3 py-1 rounded-full text-sm font-bold " + estadoBg(psem, cfg, t)}>
-                    Prom. semestre: {psem.toFixed(2)}
-                  </span>
-                )}
-                <button onClick={() => toggleArchivo(sem)} className={t.faint + " hover:text-indigo-400 text-sm"}
-                  title={archivado ? "Restaurar semestre" : "Archivar semestre"}>
-                  {archivado ? "📂 Restaurar" : "🗄️ Archivar"}
-                </button>
-              </div>
-            </div>
-
-            {/* Contenido de la carpeta */}
-            {abierta && mats.map((m: Materia) => {
-              const ns = MiniDB.find<Nota>("notas", (n) => n.materiaId === m.id);
-              const p = promedio(data.notas, m.id);
-              const c = calculo(ns, cfg.nota_minima);
-              return (
-                <Fade key={m.id} k={m.id}>
-                  <div className={cardBase + " " + t.card} style={{ borderLeft: `5px solid ${m.color}` }}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className={"font-bold " + t.text}>{m.nombre}</div>
-                        <div className={"text-sm " + t.sub}>
-                          {m.profesor || "Sin profesor"} · {m.creditos} créditos · {c.pesoEval}% calificado · {c.restante}% pendiente
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {p !== null && (
-                          <span className={"px-3 py-1 rounded-full text-sm font-bold " + estadoBg(p, cfg, t)}>
-                            {p.toFixed(2)}
-                          </span>
-                        )}
-                        <Btn t={t} tone="danger" onClick={() => eliminar(m.id)}>✕</Btn>
-                      </div>
-                    </div>
-
-                    {/* Aviso: mínimo para ganar la materia (solo si hay pendientes) */}
-                    {c.restante > 0 && (
-                      <div className={"mt-2 text-xs " + t.sub}>
-                        {c.requerida !== null && c.requerida <= 0 ? (
-                          <span className={t.ok + " font-semibold"}>✅ Materia asegurada (≥ {cfg.nota_minima})</span>
-                        ) : c.requerida !== null && c.requerida > 5 ? (
-                          <span className="text-red-500 font-semibold">🔴 Ya no es posible ganarla (máx. {c.maximo.toFixed(2)})</span>
-                        ) : (
-                          <span>🎯 Para ganar necesitas <strong>{c.requerida!.toFixed(2)}</strong> en el {c.restante}% pendiente · máximo posible: {c.maximo.toFixed(2)}</span>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Lista de notas */}
-                    <div className="mt-3 space-y-2">
-                      {ns.length === 0 && <div className={"text-sm " + t.faint}>Sin notas registradas</div>}
-                      {ns.map((n: Nota) => (
-                        <div key={n.id} className={"flex items-center gap-2 text-sm " + t.sub}>
-                          <span className="flex-1">
-                            {n.nombre} <span className={t.faint}>({n.porcentaje}%)</span>{" "}
-                            <FechaBadge fecha={n.fecha} t={t} />
-                          </span>
-                          {n.valor === null ? (
-                            <span className={"text-xs italic " + t.faint}>pendiente</span>
-                          ) : (
-                            <span className={estadoTxt(n.valor, cfg, t)}>{n.valor.toFixed(1)}</span>
-                          )}
-                          <button className={t.faint + " hover:text-red-500"}
-                            onClick={() => { MiniDB.remove("notas", n.id); refresh(); }}>✕</button>
-                        </div>
-                      ))}
-                    </div>
-                    <FormNota materiaId={m.id} refresh={refresh} t={t} />
+          <Fade key={m.id} k={m.id}>
+            <div className={cardBase + " " + t.card} style={{ borderLeft: `5px solid ${m.color}` }}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className={"font-bold " + t.text}>{m.nombre}</div>
+                  <div className={"text-sm " + t.sub}>
+                    {m.profesor || "Sin profesor"} · {m.creditos} créditos · {c.pesoEval}% calificado · {c.restante}% pendiente
                   </div>
-                </Fade>
-              );
-            })}
-          </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {p !== null && (
+                    <span className={"px-3 py-1 rounded-full text-sm font-bold " + estadoBg(p, cfg, t)}>
+                      {p.toFixed(2)}
+                    </span>
+                  )}
+                  <Btn t={t} tone="danger" onClick={() => eliminar(m.id)}>✕</Btn>
+                </div>
+              </div>
+
+              {/* Aviso: mínimo para ganar la materia (solo si hay pendientes) */}
+              {c.restante > 0 && (
+                <div className={"mt-2 text-xs " + t.sub}>
+                  {c.requerida !== null && c.requerida <= 0 ? (
+                    <span className={t.ok + " font-semibold"}>✅ Materia asegurada (≥ {cfg.nota_minima})</span>
+                  ) : c.requerida !== null && c.requerida > 5 ? (
+                    <span className="text-red-500 font-semibold">🔴 Ya no es posible ganarla (máx. {c.maximo.toFixed(2)})</span>
+                  ) : (
+                    <span>🎯 Para ganar necesitas <strong>{c.requerida!.toFixed(2)}</strong> en el {c.restante}% pendiente · máximo posible: {c.maximo.toFixed(2)}</span>
+                  )}
+                </div>
+              )}
+
+              {/* Lista de notas */}
+              <div className="mt-3 space-y-2">
+                {ns.length === 0 && <div className={"text-sm " + t.faint}>Sin notas registradas</div>}
+                {ns.map((n: Nota) => (
+                  <div key={n.id} className={"flex items-center gap-2 text-sm " + t.sub}>
+                    <span className="flex-1">
+                      {n.nombre} <span className={t.faint}>({n.porcentaje}%)</span>{" "}
+                      <FechaBadge fecha={n.fecha} t={t} />
+                    </span>
+                    {n.valor === null ? (
+                      <span className={"text-xs italic " + t.faint}>pendiente</span>
+                    ) : (
+                      <span className={estadoTxt(n.valor, cfg, t)}>{n.valor.toFixed(1)}</span>
+                    )}
+                    <button className={t.faint + " hover:text-red-500"}
+                      onClick={() => { MiniDB.remove("notas", n.id); refresh(); }}>✕</button>
+                  </div>
+                ))}
+              </div>
+              <FormNota materiaId={m.id} refresh={refresh} t={t} />
+            </div>
+          </Fade>
         );
       })}
     </div>
@@ -623,13 +632,15 @@ function TabNotas({ data, refresh, t }: any) {
     refresh();
   };
 
-  const sems = [...new Set((data.materias as Materia[]).map((m) => m.semestre || "Sin semestre"))].sort();
+  const activo = cfg.activo;
+  const matsActivos = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === activo);
+  const sems = matsActivos.length ? [activo] : [];
 
   return (
     <div className="space-y-5">
-      {data.materias.length === 0 && (
+      {matsActivos.length === 0 && (
         <div className={cardBase + " " + t.card + " " + t.sub + " text-sm"}>
-          Primero crea materias en la pestaña Materias.
+          No hay materias en el semestre activo ({activo || "sin semestre"}). Crea materias en la pestaña Materias.
         </div>
       )}
 
@@ -753,10 +764,12 @@ function TabSimulador({ data, refresh, t }: any) {
   const [objetivos, setObjetivos] = useState<Record<string, string>>({});
   const cfg: Config = data.config[0];
 
-  const sems = [...new Set((data.materias as Materia[]).map((m) => m.semestre || "Sin semestre"))].sort();
+  const activo = cfg.activo;
+  const matsActivos = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === activo);
+  const sems = matsActivos.length ? [activo] : [];
 
-  // Análisis de riesgo por materia: margen = máximo alcanzable − nota mínima
-  const riesgos = (data.materias as Materia[]).map((m) => {
+  // Análisis de riesgo por materia (solo el semestre activo): margen = máximo alcanzable − nota mínima
+  const riesgos = matsActivos.map((m) => {
     const ns = MiniDB.find<Nota>("notas", (n) => n.materiaId === m.id);
     const c = calculo(ns, cfg.nota_minima);
     const margen = c.maximo - cfg.nota_minima;
@@ -800,9 +813,9 @@ function TabSimulador({ data, refresh, t }: any) {
         </div>
       )}
 
-      {data.materias.length === 0 && (
+      {matsActivos.length === 0 && (
         <div className={cardBase + " " + t.card + " " + t.sub + " text-sm"}>
-          Crea materias primero en la pestaña Materias.
+          No hay materias en el semestre activo ({activo || "sin semestre"}). Crea materias en la pestaña Materias.
         </div>
       )}
 
@@ -885,6 +898,9 @@ function TabHorarios({ data, refresh, t }: any) {
   };
   const del = (id: string) => { MiniDB.remove("clases", id); refresh(); };
   const nombre = (id: string) => (data.materias as Materia[]).find((m) => m.id === id)?.nombre ?? "—";
+  // Solo materias y clases del semestre activo
+  const activos = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === data.config[0].activo);
+  const idsAct = new Set(activos.map((m) => m.id));
 
   return (
     <div className="space-y-5">
@@ -894,7 +910,7 @@ function TabHorarios({ data, refresh, t }: any) {
           <select className={inputBase + " sm:col-span-2 " + t.input} value={f.materiaId}
             onChange={(e) => setF({ ...f, materiaId: e.target.value })}>
             <option value="">Selecciona materia…</option>
-            {(data.materias as Materia[]).map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+            {activos.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
           </select>
           <select className={inputBase + " " + t.input} value={f.dia}
             onChange={(e) => setF({ ...f, dia: Number(e.target.value) })}>
@@ -910,14 +926,14 @@ function TabHorarios({ data, refresh, t }: any) {
             <Btn t={t} onClick={add}>Añadir</Btn>
           </div>
         </div>
-        {(data.materias as Materia[]).length === 0 && (
-          <p className="text-sm text-amber-500 mt-2">Primero crea una materia en la pestaña Materias.</p>
+        {activos.length === 0 && (
+          <p className="text-sm text-amber-500 mt-2">No hay materias en el semestre activo. Crea una en la pestaña Materias.</p>
         )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {DIAS.map((d, i) => {
-          const cs = (data.clases as Clase[]).filter((c) => c.dia === i)
+          const cs = (data.clases as Clase[]).filter((c) => c.dia === i && idsAct.has(c.materiaId))
             .sort((a, b) => a.inicio.localeCompare(b.inicio));
           return (
             <div key={d} className={"rounded-2xl border p-4 min-h-24 " + t.group}>
@@ -960,9 +976,15 @@ function TabCalendario({ data, t }: any) {
   const fechaDe = (d: number) => `${anio}-${pad(mes + 1)}-${pad(d)}`;
 
   // Notas con fecha que caen en el mes visible, agrupadas por día
+  // Solo entregas de materias del semestre activo
+  const idsAct = new Set(
+    (data.materias as Materia[])
+      .filter((m) => (m.semestre || "Sin semestre") === data.config[0].activo)
+      .map((m) => m.id)
+  );
   const porDia: Record<number, Nota[]> = {};
   (data.notas as Nota[]).forEach((n) => {
-    if (n.fecha && n.fecha.startsWith(`${anio}-${pad(mes + 1)}`)) {
+    if (n.fecha && idsAct.has(n.materiaId) && n.fecha.startsWith(`${anio}-${pad(mes + 1)}`)) {
       const d = parseInt(n.fecha.slice(8, 10), 10);
       (porDia[d] = porDia[d] || []).push(n);
     }
@@ -1049,8 +1071,7 @@ function TabCalendario({ data, t }: any) {
  */
 function TabDashboard({ data, refresh, t, goTab }: any) {
   const cfg: Config = data.config[0];
-  const arch = cfg.archivados || [];
-  const mats = (data.materias as Materia[]).filter((m) => !arch.includes(m.semestre || "Sin semestre"));
+  const mats = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === cfg.activo);
 
   // Estado vacío: primera visita sin materias
   if (mats.length === 0) {
@@ -1060,9 +1081,11 @@ function TabDashboard({ data, refresh, t, goTab }: any) {
           <div className="text-5xl mb-3">🎓</div>
           <h2 className={"text-xl font-bold " + t.text}>¡Bienvenido a Seguidor de Notas!</h2>
           <p className={"text-sm mt-2 mb-5 " + t.sub}>
-            Crea tu primera materia y empieza a organizar tu semestre: notas, simulador, horarios y calendario.
+            {cfg.activo
+              ? `Aún no hay materias en ${cfg.activo}: créalas en la pestaña Materias y aquí verás tu resumen.`
+              : "Crea tu primer semestre con la opción ➕ Añadir semestre… del encabezado, y luego añade tus materias."}
           </p>
-          <Btn t={t} onClick={() => goTab("materias")}>➕ Crear mi primera materia</Btn>
+          <Btn t={t} onClick={() => goTab("materias")}>➕ Empezar</Btn>
         </div>
       </Fade>
     );
@@ -1210,9 +1233,27 @@ function App() {
     { id: "calendario", icon: "📅", label: "Calendario" },
   ] as const;
 
-  // Estadísticas para el encabezado hero (solo semestres activos)
-  const arch = cfg.archivados || [];
-  const mats = (data.materias as Materia[]).filter((m) => !arch.includes(m.semestre || "Sin semestre"));
+  // Semestres registrados + selector del semestre activo (único visible)
+  const semestres: string[] = cfg.semestres || [];
+  const cambiarSemestre = (val: string) => {
+    if (val === "__nuevo") {
+      const nombre = prompt("📝 Nombre del nuevo semestre (ej: 2027-1):", "");
+      if (nombre && nombre.trim()) {
+        const n = nombre.trim();
+        MiniDB.saveConfig({
+          semestres: semestres.includes(n) ? semestres : [...semestres, n],
+          activo: n,
+        });
+        refresh();
+      }
+      return;
+    }
+    MiniDB.saveConfig({ activo: val });
+    refresh();
+  };
+
+  // Estadísticas del encabezado: solo el semestre activo
+  const mats = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === cfg.activo);
   let suma = 0, peso = 0;
   mats.forEach((m) => {
     const p = promedio(data.notas, m.id);
@@ -1251,6 +1292,20 @@ function App() {
               <div className="text-[10px] uppercase font-bold text-white/70">Créditos</div>
               <div className="text-2xl font-extrabold">{mats.reduce((s, m) => s + m.creditos, 0)}</div>
             </div>
+          </div>
+          {/* --- Selector de semestre activo --- */}
+          <div className="relative flex flex-wrap items-center gap-2 mt-4">
+            <span className="text-[10px] uppercase font-bold text-white/70">Semestre activo</span>
+            <select value={cfg.activo} onChange={(e) => cambiarSemestre(e.target.value)}
+              className="rounded-xl px-3 py-1.5 text-sm font-semibold bg-white/15 border border-white/25 text-white backdrop-blur focus:outline-none">
+              {semestres.length === 0 && <option value="">— sin semestres —</option>}
+              {semestres.map((s) => (
+                <option key={s} value={s} className="text-slate-800">
+                  {s + ((cfg.archivados || []).includes(s) ? " (archivado)" : "")}
+                </option>
+              ))}
+              <option value="__nuevo" className="text-slate-800">➕ Añadir semestre…</option>
+            </select>
           </div>
         </header>
 
