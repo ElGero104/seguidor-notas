@@ -302,7 +302,75 @@ function useDB() {
   const [data, setData] = useState(() => MiniDB.load());
   const refresh = () => setData(MiniDB.load());
   useEffect(() => { refresh(); }, []);
+  // Refresco global: al deshacer o restaurar un respaldo, todos los
+  // componentes conectados con useDB() recargan desde localStorage
+  useEffect(() => {
+    const h = () => refresh();
+    window.addEventListener("db-undo", h);
+    return () => { window.removeEventListener("db-undo", h); };
+  }, []);
   return { data, refresh };
+}
+
+// ==================== DESHACER (aviso global con 5 segundos) ====================
+/**
+ * Sistema global de "deshacer": antes de cada acción destructiva se toma una
+ * foto instantánea de la DB en localStorage; el aviso flotante permite
+ * restaurarla durante 5 segundos. Al deshacer (o restaurar un respaldo) se
+ * emite el evento "db-undo" y todos los componentes con useDB() se refrescan.
+ */
+type UndoInfo = { json: string; msg: string; key: number };
+let undoState: UndoInfo | null = null;
+const undoSubs = new Set<() => void>();
+const notifyUndo = () => undoSubs.forEach((f) => f());
+
+/** Toma la instantánea ACTUAL de la DB y muestra el aviso. Llamar ANTES de mutar. */
+function setUndo(msg: string) {
+  undoState = { json: localStorage.getItem(DB_KEY) || "", msg, key: Date.now() };
+  notifyUndo();
+}
+
+function clearUndo() {
+  undoState = null;
+  notifyUndo();
+}
+
+function deshacerUltimo() {
+  if (!undoState) return;
+  const json = undoState.json;
+  clearUndo();
+  try {
+    if (json) localStorage.setItem(DB_KEY, json);
+    else localStorage.removeItem(DB_KEY);
+  } catch {}
+  window.dispatchEvent(new Event("db-undo"));
+}
+
+/** Aviso flotante: mensaje de la acción + botón "Deshacer" (5 segundos). */
+function UndoToast({ t }: any) {
+  const [u, setU] = useState<UndoInfo | null>(undoState);
+  useEffect(() => {
+    const f = () => setU(undoState);
+    undoSubs.add(f);
+    return () => { undoSubs.delete(f); };
+  }, []);
+  // El aviso desaparece solo a los 5 segundos (o al deshacer)
+  useEffect(() => {
+    if (!u) return;
+    const id = setTimeout(() => clearUndo(), 5000);
+    return () => clearTimeout(id);
+  }, [u && u.key]);
+  if (!u) return null;
+  return (
+    <div className={"fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-3 rounded-2xl border shadow-lg px-4 py-2.5 " + t.card}
+      role="status">
+      <span className={"text-sm font-medium " + t.text}>{u.msg}</span>
+      <button onClick={deshacerUltimo}
+        className="rounded-xl px-3 py-1.5 text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition shadow">
+        ↩️ Deshacer
+      </button>
+    </div>
+  );
 }
 
 // ==================== EXPORTAR CSV/EXCEL ====================
@@ -332,6 +400,59 @@ function exportarCSV(data: any) {
   a.download = "seguidor-notas.csv";
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ==================== RESPALDO Y RESTAURACIÓN COMPLETA (.json) ====================
+/**
+ * Respaldo completo de TODOS los datos en un solo archivo .json: materias,
+ * notas, horarios, TODOS los semestres y la configuración. Es el respaldo
+ * "de verdad": sirve para migrar de navegador o recuperar tras limpiar datos.
+ * "Restaurar" valida el archivo, pide confirmación y reemplaza los datos
+ * actuales (se puede deshacer durante 5 segundos desde el aviso).
+ */
+function exportarJSON() {
+  const raw = localStorage.getItem(DB_KEY);
+  if (!raw) { alert("⚠️ No hay datos que respaldar todavía."); return; }
+  const respaldo = {
+    app: "seguidor-notas",
+    version: 1,
+    fecha: new Date().toISOString(),
+    db: JSON.parse(raw),
+  };
+  const blob = new Blob([JSON.stringify(respaldo, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "seguidor-notas-respaldo-" + new Date().toISOString().slice(0, 10) + ".json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function restaurarJSON(archivo: File) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const p = JSON.parse(String(reader.result));
+      // Acepta el respaldo con envoltorio ({app, db, fecha}) o la DB cruda
+      const db: any = p && p.app === "seguidor-notas" && p.db ? p.db : p;
+      if (!db || !Array.isArray(db.materias) || !Array.isArray(db.notas) ||
+          !Array.isArray(db.clases) || !Array.isArray(db.config)) {
+        throw new Error("formato inválido");
+      }
+      const cfgR: Config = { ...CONFIG_DEFAULT, ...(db.config[0] || {}) };
+      if (!confirm(
+        `♻️ ¿Restaurar este respaldo?\n\n` +
+        `Se REEMPLAZARÁN todos los datos actuales de este navegador.\n\n` +
+        `El archivo contiene ${db.materias.length} materia(s) en ${(cfgR.semestres || []).length} semestre(s).`
+      )) return;
+      setUndo("♻️ Respaldo restaurado"); // también deshacible durante 5 s
+      MiniDB.persist({ ...DB_SCHEMA, ...db, config: [cfgR] });
+      window.dispatchEvent(new Event("db-undo"));
+    } catch {
+      alert("❌ El archivo no es un respaldo válido de Seguidor de Notas.");
+    }
+  };
+  reader.readAsText(archivo);
 }
 
 // ==================== RESPALDO EXCEL (.xlsx) ====================
@@ -554,6 +675,7 @@ function TabMaterias({ data, refresh, t }: any) {
 
   // DELETE en cascada: materia + notas + clases
   const eliminar = (id: string) => {
+    setUndo("🗑️ Materia eliminada");
     MiniDB.remove("materias", id);
     MiniDB.removeWhere("notas", (n) => n.materiaId === id);
     MiniDB.removeWhere("clases", (c) => c.materiaId === id);
@@ -572,7 +694,8 @@ function TabMaterias({ data, refresh, t }: any) {
     const ms = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === activo);
     const idsMs = new Set(ms.map((m) => m.id));
     const nNotas = (data.notas as Nota[]).filter((n) => idsMs.has(n.materiaId)).length;
-    if (!confirm(`⚠️ ¿Eliminar "${activo}" con ${ms.length} materia(s) y ${nNotas} nota(s)?\n\nSe borrarán también sus horarios. Esta acción NO se puede deshacer.`)) return;
+    if (!confirm(`⚠️ ¿Eliminar "${activo}" con ${ms.length} materia(s) y ${nNotas} nota(s)?\n\nSe borrarán también sus horarios.\n\nPodrás deshacerlo durante 5 segundos con el aviso ↩️ Deshacer.`)) return;
+    setUndo("🗑️ Semestre eliminado");
     ms.forEach((m) => {
       MiniDB.remove("materias", m.id);
       MiniDB.removeWhere("notas", (n) => n.materiaId === m.id);
@@ -669,7 +792,7 @@ function TabMaterias({ data, refresh, t }: any) {
         <div className="flex items-center justify-between mb-3">
           <h2 className={"font-bold " + t.text}>➕ Crear materia en {activo}</h2>
           <div className="flex gap-2">
-            <Btn t={t} tone="soft" onClick={() => exportarExcel(data)}>📊 Respaldo Excel</Btn>
+            <Btn t={t} tone="soft" onClick={() => exportarExcel(data)}>📊 Excel</Btn>
             <Btn t={t} tone="soft" onClick={() => exportarCSV(data)}>⬇️ CSV</Btn>
           </div>
         </div>
@@ -806,7 +929,7 @@ function TabMaterias({ data, refresh, t }: any) {
                       <span className={estadoTxt(n.valor, cfg, t)}>{n.valor.toFixed(1)}</span>
                     )}
                     <button className={t.faint + " hover:text-red-500"}
-                      onClick={() => { MiniDB.remove("notas", n.id); refresh(); }}>✕</button>
+                      onClick={() => { setUndo("🗑️ Nota eliminada"); MiniDB.remove("notas", n.id); refresh(); }}>✕</button>
                   </div>
                 ))}
               </div>
@@ -868,6 +991,7 @@ function TabNotas({ data, refresh, t }: any) {
     }
     const actuales = MiniDB.find<Nota>("notas", (x) => x.materiaId === m.id);
     if (actuales.length > 0 && !confirm(`¿Reemplazar las ${actuales.length} notas actuales de ${m.nombre}?`)) return;
+    setUndo("♻️ Estructura de notas reemplazada");
     MiniDB.removeWhere("notas", (x) => x.materiaId === m.id);
     const peso = Math.floor((100 / n) * 10) / 10;
     for (let i = 1; i <= n; i++) {
@@ -997,7 +1121,7 @@ function TabNotas({ data, refresh, t }: any) {
                             <input className={inputBase + " " + t.input} type="date" value={n.fecha ?? ""}
                               onChange={(e) => editarNota(n.id, "fecha", e.target.value)} />
                             <button className={t.faint + " hover:text-red-500 justify-self-center"}
-                              onClick={() => { MiniDB.remove("notas", n.id); refresh(); }}>✕</button>
+                              onClick={() => { setUndo("🗑️ Nota eliminada"); MiniDB.remove("notas", n.id); refresh(); }}>✕</button>
                           </div>
                         ))}
                       </div>
@@ -1154,7 +1278,7 @@ function TabHorarios({ data, refresh, t }: any) {
     MiniDB.insert<Clase>("clases", { id: uid(), ...f } as Clase);
     refresh();
   };
-  const del = (id: string) => { MiniDB.remove("clases", id); refresh(); };
+  const del = (id: string) => { setUndo("🗑️ Clase eliminada"); MiniDB.remove("clases", id); refresh(); };
   const nombre = (id: string) => (data.materias as Materia[]).find((m) => m.id === id)?.nombre ?? "—";
   // Solo materias y clases del semestre activo
   const activos = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === data.config[0].activo);
@@ -1531,11 +1655,29 @@ function App() {
               <h1 className="text-2xl sm:text-3xl font-extrabold">🎓 Seguidor de Notas</h1>
               <p className="text-sm text-white/80">Tu semestre de un vistazo: notas, simulador, horarios y calendario.</p>
             </div>
-            <button onClick={toggleDark}
-              className="text-2xl rounded-xl px-3 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
-              title={cfg.dark ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}>
-              {cfg.dark ? "☀️" : "🌙"}
-            </button>
+            <div className="flex gap-2">
+              <button onClick={exportarJSON}
+                className="text-xl rounded-xl px-3 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
+                title="Descargar respaldo completo (.json): materias, notas, horarios y todos los semestres">
+                💾
+              </button>
+              <label
+                className="text-xl rounded-xl px-3 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition cursor-pointer"
+                title="Restaurar un respaldo (.json): reemplaza los datos actuales">
+                ♻️
+                <input type="file" accept=".json,application/json" className="hidden"
+                  onChange={(e) => {
+                    const f = (e.target as HTMLInputElement).files?.[0];
+                    e.target.value = "";
+                    if (f) restaurarJSON(f);
+                  }} />
+              </label>
+              <button onClick={toggleDark}
+                className="text-2xl rounded-xl px-3 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
+                title={cfg.dark ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}>
+                {cfg.dark ? "☀️" : "🌙"}
+              </button>
+            </div>
           </div>
           <div className="relative grid grid-cols-3 gap-3 mt-6">
             <div className={"rounded-2xl p-3 " + t.heroCard}>
@@ -1589,7 +1731,7 @@ function App() {
         </Fade>
 
         <footer className={"mt-8 text-center text-xs " + t.faint}>
-          🗄️ Tus datos se guardan en la base de datos local de este navegador.
+          🗄️ Tus datos se guardan en este navegador · respáldalos con 💾 desde el encabezado.
         </footer>
       </div>
 
@@ -1607,6 +1749,9 @@ function App() {
           ))}
         </div>
       </nav>
+
+      {/* --- Aviso flotante global de "Deshacer" --- */}
+      <UndoToast t={t} />
     </div>
   );
 }

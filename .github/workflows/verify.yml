@@ -1,0 +1,38 @@
+name: Verificar app
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # La web compila el TSX en el navegador con Babel; este paso atrapa
+      # errores de sintaxis ANTES de que lleguen a GitHub Pages.
+      - name: Compilar src/App.tsx (verificación de sintaxis TSX)
+        run: npx --yes esbuild@0.24.0 src/App.tsx --outfile=/dev/null
+
+      - name: Verificar que docs/index.html está completo y coincide con src
+        run: |
+          # Extraer el TSX embebido en la web
+          awk '/<script type="text\/plain" id="tsx-source">/{f=1;next} f && /^<\/script>$/{f=0;next} f' docs/index.html > web.tsx
+          test -s web.tsx
+          grep -q '</html>' docs/index.html
+          # Debe contener el render de la app (detecta archivos truncados)
+          grep -q 'ReactDOM.createRoot(document.getElementById("root")).render(<App />);' web.tsx
+          # Paridad exacta: fuente de la web == src/App.tsx transformado + render
+          sed -e 's|^import React, { useState, useEffect } from "react";$|const { useState, useEffect } = React;|' \
+              -e 's|^export default function App() {$|function App() {|' src/App.tsx > base.tsx
+          printf '\n\nReactDOM.createRoot(document.getElementById("root")).render(<App />);\n\n' >> base.tsx
+          diff base.tsx web.tsx
+          # Compilar también el fuente embebido en la web
+          npx --yes esbuild@0.24.0 web.tsx --outfile=/dev/null
