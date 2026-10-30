@@ -9,6 +9,9 @@ on:
 jobs:
   verificar:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
 
@@ -48,6 +51,9 @@ jobs:
       # días hasta entrega, estado de nota y CRC32 del generador de Excel.
       - name: Probar las fórmulas (promedio, nota requerida, CRC32)
         run: node scripts/test-formulas.js
+        env:
+          # Permite que el test abra un issue de diagnóstico si falla.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Restaura los iconos PNG de la PWA desde sus versiones base64 y los
   # confirma al repo si cambiaron. Los iconos son binarios y no viajan por

@@ -6,17 +6,41 @@
  * código fuente, las compila con esbuild y ejecuta casos conocidos.
  *
  * Corre en el CI (node scripts/test-formulas.js) y también funciona local.
+ * Si algo falla y hay un GH_TOKEN disponible, abre un issue con el error
+ * completo para poder diagnosticar sin acceso a los logs.
  */
-const { execSync } = require("child_process");
+const { execSync, execFileSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "src", "App.tsx"), "utf8");
 
-/** Si algo explota, deja una anotación legible en GitHub Actions. */
+/** Reporta un fallo por consola y, si puede, abriendo un issue en el repo. */
+function reportar(titulo, detalle) {
+  console.error("❌ " + titulo);
+  console.error(detalle);
+  if (process.env.GH_TOKEN && process.env.GITHUB_REPOSITORY) {
+    const cuerpo = "Error al correr `scripts/test-formulas.js` en el CI.\n\n```\n" +
+      String(detalle).slice(0, 60000) + "\n```\n\nNode " + process.version +
+      " · commit " + (process.env.GITHUB_SHA || "?").slice(0, 7);
+    try {
+      execFileSync("gh", [
+        "issue", "create",
+        "--repo", process.env.GITHUB_REPOSITORY,
+        "--title", titulo,
+        "--body", cuerpo,
+      ], { env: process.env, stdio: "ignore" });
+      console.error("(issue creado con el detalle del error)");
+    } catch (_) {
+      console.error("(no se pudo crear el issue de diagnóstico)");
+    }
+  }
+}
+
+/** Si algo explota, reporta antes de salir. */
 process.on("uncaughtException", (e) => {
-  console.log("::error::" + String((e && e.message) || e).slice(0, 300).replace(/\n/g, " "));
+  reportar("CI: prueba de fórmulas falló (excepción)", ((e && e.stack) || String(e)));
   process.exit(1);
 });
 
@@ -43,7 +67,15 @@ function compilar(nombre, fragmento, exportar) {
   const ts = path.join(tmp, nombre + ".ts");
   const js = path.join(tmp, nombre + ".js");
   fs.writeFileSync(ts, fragmento + "\nmodule.exports = " + exportar + ";\n");
-  execSync('npx --yes esbuild@0.24.0 "' + ts + '" --format=cjs --outfile="' + js + '"', { stdio: "inherit" });
+  try {
+    execSync('npx --yes esbuild@0.24.0 "' + ts + '" --format=cjs --outfile="' + js + '"');
+  } catch (e) {
+    reportar("CI: esbuild falló compilando el fragmento " + nombre,
+      "comando: npx --yes esbuild@0.24.0 \"" + ts + "\" --format=cjs --outfile=\"" + js + "\"\n\n" +
+      String(e.message) + "\n--- stdout ---\n" + String(e.stdout || "") +
+      "\n--- stderr ---\n" + String(e.stderr || ""));
+    process.exit(1);
+  }
   return require(js);
 }
 
@@ -120,8 +152,8 @@ check("cNum celda numérica", cNum(1, 2, 4.5) === '<c r="B2"><v>4.5</v></c>');
 
 console.log("");
 if (fallos > 0) {
-  console.error("❌ " + fallos + " prueba(s) fallaron");
-  console.log("::error::Pruebas de fórmulas fallaron: " + nombresFallos.join(" | ").slice(0, 300));
+  reportar("CI: " + fallos + " prueba(s) de fórmulas fallaron",
+    "Pruebas fallidas:\n" + nombresFallos.map((n) => "- " + n).join("\n"));
   process.exit(1);
 }
 console.log("✅ Todas las pruebas de fórmulas pasaron");
