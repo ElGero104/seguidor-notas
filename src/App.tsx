@@ -318,6 +318,192 @@ function exportarCSV(data: any) {
   URL.revokeObjectURL(url);
 }
 
+// ==================== RESPALDO EXCEL (.xlsx) ====================
+/**
+ * Genera un archivo .xlsx REAL (ZIP de XML, construido a mano sin librerías),
+ * con una hoja por semestre. Cada materia incluye sus notas con pesos y
+ * FÓRMULAS vivas de Excel: promedio ponderado (SUMPRODUCT), peso evaluado
+ * y nota requerida en lo pendiente para ganar la materia.
+ */
+
+/** Tabla CRC32 estándar (requerida por el formato ZIP). */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes: Uint8Array) {
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+/** Escapa texto para incrustarlo en XML (nombres, fórmulas, etc.). */
+function esc(s: any) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** Letra de columna: 0 -> A, 1 -> B, 26 -> AA... */
+function colL(i: number) {
+  let s = "";
+  i++;
+  while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); }
+  return s;
+}
+
+/** ZIP sin compresión (método STORE): la base del contenedor .xlsx. */
+function zipStore(files: { name: string; data: Uint8Array }[]) {
+  const enc = new TextEncoder();
+  const u16 = (n: number) => new Uint8Array([n & 0xff, (n >> 8) & 0xff]);
+  const u32 = (n: number) => new Uint8Array([n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >>> 24) & 0xff]);
+  const cat = (arrs: Uint8Array[]) => {
+    const len = arrs.reduce((s, a) => s + a.length, 0);
+    const out = new Uint8Array(len);
+    let p = 0;
+    arrs.forEach((a) => { out.set(a, p); p += a.length; });
+    return out;
+  };
+  const chunks: Uint8Array[] = [];
+  const central: Uint8Array[] = [];
+  let offset = 0;
+  files.forEach((f) => {
+    const name = enc.encode(f.name);
+    const crc = crc32(f.data);
+    const local = cat([u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(0), u16(0x21),
+      u32(crc), u32(f.data.length), u32(f.data.length), u16(name.length), u16(0), name, f.data]);
+    chunks.push(local);
+    central.push(cat([u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0x21),
+      u32(crc), u32(f.data.length), u32(f.data.length), u16(name.length), u16(0), u16(0),
+      u16(0), u16(0), u32(0), u32(offset), name]));
+    offset += local.length;
+  });
+  const cd = cat(central);
+  const eocd = cat([u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length),
+    u32(cd.length), u32(offset), u16(0)]);
+  return cat([...chunks, cd, eocd]);
+}
+
+/** Celda de texto (inlineStr). `bold` usa el estilo 1 (negrita). */
+function cStr(col: number, row: number, text: string, bold = false) {
+  return `<c r="${colL(col)}${row}"${bold ? ' s="1"' : ""} t="inlineStr"><is><t xml:space="preserve">${esc(text)}</t></is></c>`;
+}
+/** Celda numérica. */
+function cNum(col: number, row: number, v: number, bold = false) {
+  return `<c r="${colL(col)}${row}"${bold ? ' s="1"' : ""}><v>${v}</v></c>`;
+}
+/** Celda vacía (deja la casilla en blanco, ej. nota pendiente). */
+function cEmp(col: number, row: number) {
+  return `<c r="${colL(col)}${row}"/>`;
+}
+
+/**
+ * Respaldo completo a Excel: una hoja por semestre con las materias,
+ * sus notas (nombre, peso %, valor, fecha) y fórmulas calculadas:
+ *   - Promedio ponderado: SUMPRODUCT(pesos, valores) / SUMPRODUCT(pesos calificados)
+ *   - Peso evaluado:      SUMPRODUCT((valores<>"") * pesos)
+ *   - Nota requerida en lo pendiente para ganar la materia
+ */
+function exportarExcel(data: any) {
+  const cfg: Config = data.config[0];
+  const mats = data.materias as Materia[];
+  const todosSems = [...new Set([...(cfg.semestres || []), ...mats.map((m) => m.semestre || "Sin semestre")])]
+    .filter(Boolean).sort();
+  if (todosSems.length === 0) { alert("⚠️ No hay datos que respaldar."); return; }
+
+  const enc = new TextEncoder();
+  const used = new Set<string>();
+  const sheets: { name: string; xml: string }[] = [];
+
+  todosSems.forEach((sem) => {
+    const ms = mats.filter((m) => (m.semestre || "Sin semestre") === sem);
+    const rows: string[] = [];
+    let r = 1;
+
+    if (ms.length === 0) {
+      rows.push(`<row r="1">` + cStr(0, 1, "Semestre sin materias", true) + `</row>`);
+    }
+    ms.forEach((m) => {
+      const ns = MiniDB.find<Nota>("notas", (n) => n.materiaId === m.id);
+      // Título de la materia + datos generales
+      rows.push(`<row r="${r}">` + cStr(0, r, m.nombre, true) + cStr(1, r, m.profesor || "") + cStr(2, r, m.creditos + " créditos") + `</row>`);
+      r++;
+      // Encabezado de columnas
+      rows.push(`<row r="${r}">` + cStr(0, r, "Nota", true) + cStr(1, r, "Peso %", true) +
+        cStr(2, r, "Valor (0-5)", true) + cStr(3, r, "Fecha entrega", true) + cStr(4, r, "Estado", true) + `</row>`);
+      r++;
+      const first = r;
+      ns.forEach((n) => {
+        let cells = cStr(0, r, n.nombre) + cNum(1, r, n.porcentaje);
+        cells += n.valor !== null ? cNum(2, r, n.valor) : cEmp(2, r);
+        if (n.fecha) cells += cStr(3, r, n.fecha);
+        cells += cStr(4, r, n.valor !== null ? "Calificada" : "Pendiente");
+        rows.push(`<row r="${r}">` + cells + `</row>`);
+        r++;
+      });
+      const last = r - 1;
+      if (ns.length > 0) {
+        // Promedio ponderado (solo calificadas) + peso evaluado, con fórmulas vivas
+        rows.push(`<row r="${r}">` + cStr(0, r, "Promedio ponderado", true) +
+          `<c r="B${r}" s="1"><f>SUMPRODUCT((C${first}:C${last}&lt;&gt;"")*B${first}:B${last})</f></c>` +
+          `<c r="C${r}" s="1"><f>IF(SUMPRODUCT((C${first}:C${last}&lt;&gt;"")*B${first}:B${last})=0,"—",SUMPRODUCT(B${first}:B${last},C${first}:C${last})/SUMPRODUCT((C${first}:C${last}&lt;&gt;"")*B${first}:B${last}))</f></c>` +
+          `</row>`);
+        r++;
+        // Nota requerida en el % pendiente para ganar la materia
+        rows.push(`<row r="${r}">` + cStr(0, r, `Requerida en lo pendiente (para ${cfg.nota_minima})`) +
+          `<c r="C${r}"><f>IF(SUMPRODUCT((C${first}:C${last}&lt;&gt;"")*B${first}:B${last})&gt;=100,"—",(${cfg.nota_minima}*100-SUMPRODUCT(B${first}:B${last},C${first}:C${last}))/(100-SUMPRODUCT((C${first}:C${last}&lt;&gt;"")*B${first}:B${last})))</f></c>` +
+          `</row>`);
+        r++;
+      }
+      r++; // fila en blanco entre materias
+    });
+
+    // Nombre de hoja válido para Excel (sin []:*?/\ y máx 31 caracteres)
+    let name = (sem.replace(/[\\\/\?\*\[\]:]/g, " ").slice(0, 31)) || "Hoja";
+    let dedup = 1;
+    while (used.has(name)) name = name.slice(0, 28) + "_" + dedup++;
+    used.add(name);
+
+    sheets.push({
+      name,
+      xml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>` + rows.join("") + `</sheetData></worksheet>`,
+    });
+  });
+
+  // ---- Partes del contenedor OOXML ----
+  const n = sheets.length;
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>` +
+    sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("") + `</Types>`;
+  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+  const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>` +
+    sheets.map((s, i) => `<sheet name="${esc(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("") + `</sheets></workbook>`;
+  const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join("") +
+    `<Relationship Id="rId${n + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="2"><xf/><xf fontId="1" applyFont="1"/></cellXfs></styleSheet>`;
+
+  // ---- Empaquetar y descargar ----
+  const bytes = zipStore([
+    { name: "[Content_Types].xml", data: enc.encode(contentTypes) },
+    { name: "_rels/.rels", data: enc.encode(rels) },
+    { name: "xl/workbook.xml", data: enc.encode(workbook) },
+    { name: "xl/_rels/workbook.xml.rels", data: enc.encode(wbRels) },
+    { name: "xl/styles.xml", data: enc.encode(styles) },
+    ...sheets.map((s, i) => ({ name: `xl/worksheets/sheet${i + 1}.xml`, data: enc.encode(s.xml) })),
+  ]);
+  const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "seguidor-notas-respaldo.xlsx";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ==================== PESTAÑA MATERIAS ====================
 
 /**
@@ -328,6 +514,8 @@ function exportarCSV(data: any) {
 function TabMaterias({ data, refresh, t }: any) {
   const [form, setForm] = useState({ nombre: "", profesor: "", creditos: 3 });
   const [q, setQ] = useState("");
+  const [editando, setEditando] = useState<string | null>(null);
+  const [ef, setEf] = useState({ nombre: "", profesor: "", creditos: 3, color: "#6366f1" });
   const cfg: Config = data.config[0];
   const activo = cfg.activo;
   const arch: string[] = cfg.archivados || [];
@@ -359,6 +547,44 @@ function TabMaterias({ data, refresh, t }: any) {
   // Archivar / restaurar el semestre activo
   const toggleArchivo = () => {
     MiniDB.saveConfig({ archivados: arch.includes(activo) ? arch.filter((x) => x !== activo) : [...arch, activo] });
+    refresh();
+  };
+
+  // Eliminar el semestre activo por completo: materias + notas + clases (cascada)
+  const borrarSemestre = () => {
+    if (!activo) return;
+    const ms = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === activo);
+    const idsMs = new Set(ms.map((m) => m.id));
+    const nNotas = (data.notas as Nota[]).filter((n) => idsMs.has(n.materiaId)).length;
+    if (!confirm(`⚠️ ¿Eliminar "${activo}" con ${ms.length} materia(s) y ${nNotas} nota(s)?\n\nSe borrarán también sus horarios. Esta acción NO se puede deshacer.`)) return;
+    ms.forEach((m) => {
+      MiniDB.remove("materias", m.id);
+      MiniDB.removeWhere("notas", (n) => n.materiaId === m.id);
+      MiniDB.removeWhere("clases", (c) => c.materiaId === m.id);
+    });
+    const restantes = (cfg.semestres || []).filter((s) => s !== activo);
+    MiniDB.saveConfig({
+      semestres: restantes,
+      archivados: arch.filter((s) => s !== activo),
+      activo: restantes.slice().sort()[restantes.length - 1] || "",
+    });
+    refresh();
+  };
+
+  // Editar materia: nombre, profesor, créditos y color
+  const empezarEdicion = (m: Materia) => {
+    setEditando(m.id);
+    setEf({ nombre: m.nombre, profesor: m.profesor, creditos: m.creditos, color: m.color });
+  };
+  const guardarEdicion = (id: string) => {
+    if (!ef.nombre.trim()) return;
+    MiniDB.update<Materia>("materias", id, {
+      nombre: ef.nombre.trim(),
+      profesor: ef.profesor.trim(),
+      creditos: Number(ef.creditos) || 0,
+      color: ef.color,
+    });
+    setEditando(null);
     refresh();
   };
 
@@ -409,6 +635,10 @@ function TabMaterias({ data, refresh, t }: any) {
             title={archivado ? "Restaurar semestre" : "Archivar semestre"}>
             {archivado ? "📂 Restaurar" : "🗄️ Archivar semestre"}
           </button>
+          <button onClick={borrarSemestre} className="text-red-400 hover:text-red-500 text-sm"
+            title="Eliminar este semestre y todo su contenido">
+            🗑️ Eliminar semestre
+          </button>
         </div>
       </div>
 
@@ -422,7 +652,10 @@ function TabMaterias({ data, refresh, t }: any) {
       <div className={cardBase + " " + t.card}>
         <div className="flex items-center justify-between mb-3">
           <h2 className={"font-bold " + t.text}>➕ Crear materia en {activo}</h2>
-          <Btn t={t} tone="soft" onClick={() => exportarCSV(data)}>⬇️ Exportar CSV/Excel</Btn>
+          <div className="flex gap-2">
+            <Btn t={t} tone="soft" onClick={() => exportarExcel(data)}>📊 Respaldo Excel</Btn>
+            <Btn t={t} tone="soft" onClick={() => exportarCSV(data)}>⬇️ CSV</Btn>
+          </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <div className="sm:col-span-2">
@@ -487,6 +720,29 @@ function TabMaterias({ data, refresh, t }: any) {
         return (
           <Fade key={m.id} k={m.id}>
             <div className={cardBase + " " + t.card} style={{ borderLeft: `5px solid ${m.color}` }}>
+              {editando === m.id ? (
+                /* --- Formulario de edición de materia --- */
+                <div className={"mb-3 rounded-xl p-3 grid grid-cols-1 sm:grid-cols-5 gap-2 " + t.group}>
+                  <input className={inputBase + " " + t.input} value={ef.nombre}
+                    placeholder="Nombre de la materia"
+                    onChange={(e) => setEf({ ...ef, nombre: e.target.value })} />
+                  <input className={inputBase + " " + t.input} value={ef.profesor} placeholder="Profesor"
+                    onChange={(e) => setEf({ ...ef, profesor: e.target.value })} />
+                  <input className={inputBase + " " + t.input} type="number" min={0} value={ef.creditos}
+                    title="Créditos"
+                    onChange={(e) => setEf({ ...ef, creditos: e.target.value })} />
+                  <div className="flex items-center gap-2">
+                    <input type="color" value={ef.color} title="Color de la materia"
+                      className={"h-9 w-12 rounded cursor-pointer border bg-transparent " + (cfg.dark ? "border-slate-600" : "border-slate-300")}
+                      onChange={(e) => setEf({ ...ef, color: e.target.value })} />
+                    <span className={"text-xs " + t.faint}>color</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Btn t={t} onClick={() => guardarEdicion(m.id)}>💾 Guardar</Btn>
+                    <Btn t={t} tone="danger" onClick={() => setEditando(null)}>Cancelar</Btn>
+                  </div>
+                </div>
+              ) : (
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className={"font-bold " + t.text}>{m.nombre}</div>
@@ -500,9 +756,11 @@ function TabMaterias({ data, refresh, t }: any) {
                       {p.toFixed(2)}
                     </span>
                   )}
+                  <Btn t={t} tone="soft" onClick={() => empezarEdicion(m)} title="Editar materia">✎</Btn>
                   <Btn t={t} tone="danger" onClick={() => eliminar(m.id)}>✕</Btn>
                 </div>
               </div>
+              )}
 
               {/* Aviso: mínimo para ganar la materia (solo si hay pendientes) */}
               {c.restante > 0 && (
@@ -1063,276 +1321,3 @@ function TabDashboard({ data, refresh, t, goTab }: any) {
       <Fade k="vacio">
         <div className={"rounded-3xl border-2 border-dashed p-10 text-center " + t.card}>
           <div className="text-5xl mb-3">🎓</div>
-          <h2 className={"text-xl font-bold " + t.text}>¡Bienvenido a Seguidor de Notas!</h2>
-          <p className={"text-sm mt-2 mb-5 " + t.sub}>
-            {cfg.activo
-              ? `Aún no hay materias en ${cfg.activo}: créalas en la pestaña Materias y aquí verás tu resumen.`
-              : "Crea tu primer semestre con la opción ➕ Añadir semestre… del encabezado, y luego añade tus materias."}
-          </p>
-          <Btn t={t} onClick={() => goTab("materias")}>➕ Empezar</Btn>
-        </div>
-      </Fade>
-    );
-  }
-
-  // Promedio general ponderado por créditos
-  let suma = 0, peso = 0;
-  mats.forEach((m) => {
-    const p = promedio(data.notas, m.id);
-    if (p !== null) { suma += p * m.creditos; peso += m.creditos; }
-  });
-  const promGeneral = peso ? suma / peso : null;
-
-  // % del semestre evaluado (promedio del peso calificado por materia)
-  const evaluadas = mats
-    .map((m) => MiniDB.find<Nota>("notas", (n) => n.materiaId === m.id))
-    .filter((ns) => ns.length > 0);
-  const pctEval = evaluadas.length
-    ? evaluadas.reduce(
-        (s, ns) => s + Math.min(100, ns.filter((n) => n.valor !== null).reduce((a, n) => a + n.porcentaje, 0)),
-        0
-      ) / evaluadas.length
-    : null;
-
-  // Riesgo por materia: margen = máximo alcanzable − nota mínima
-  const riesgos = mats
-    .map((m) => {
-      const ns = MiniDB.find<Nota>("notas", (n) => n.materiaId === m.id);
-      const c = calculo(ns, cfg.nota_minima);
-      return { m, c, margen: c.maximo - cfg.nota_minima };
-    })
-    .filter((r) => r.c.restante > 0)
-    .sort((a, b) => a.margen - b.margen);
-  const enRiesgo = riesgos.filter((r) => r.margen < 0.5);
-
-  // Próximas 3 entregas
-  const proximas = (data.notas as Nota[])
-    .filter((n) => n.fecha && diasHasta(n.fecha) !== null)
-    .sort((a, b) => (a.fecha! < b.fecha! ? -1 : 1))
-    .slice(0, 3);
-
-  const stat = (label: string, value: string, sub: string, cls = "") => (
-    <div className={"rounded-2xl border p-4 " + t.card}>
-      <div className={"text-[10px] uppercase font-bold tracking-wide " + t.faint}>{label}</div>
-      <div className={"text-2xl font-extrabold mt-1 " + cls}>{value}</div>
-      <div className={"text-xs mt-0.5 " + t.sub}>{sub}</div>
-    </div>
-  );
-
-  return (
-    <div className="space-y-5">
-      {/* --- Tarjetas de estadísticas --- */}
-      <Fade k="stats">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {stat("Promedio general", promGeneral !== null ? promGeneral.toFixed(2) : "—",
-            promGeneral !== null ? "ponderado por créditos" : "aún sin notas",
-            promGeneral !== null ? estadoTxt(promGeneral, cfg, t) : t.text)}
-          {stat("Semestre evaluado", pctEval !== null ? pctEval.toFixed(0) + "%" : "—",
-            pctEval !== null ? "del peso definido" : "define tus notas", "text-indigo-500")}
-          {stat("Materias activas", String(mats.length),
-            mats.reduce((s, m) => s + m.creditos, 0) + " créditos", "text-violet-500")}
-          {stat("En riesgo", String(enRiesgo.length),
-            enRiesgo.length ? "necesitan atención" : "todo bajo control",
-            enRiesgo.length ? "text-red-500" : "text-emerald-500")}
-        </div>
-      </Fade>
-
-      {/* --- Próximas entregas + materias que requieren atención --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Fade k="prox" className="">
-          <div className={cardBase + " " + t.card}>
-            <h2 className={"font-bold mb-3 " + t.text}>⏳ Próximas entregas</h2>
-            {proximas.length === 0 ? (
-              <p className={"text-sm " + t.faint}>Sin fechas registradas. Añádelas en la pestaña Notas.</p>
-            ) : (
-              <div className="space-y-2">
-                {proximas.map((n) => {
-                  const m = mats.find((x) => x.id === n.materiaId);
-                  return (
-                    <div key={n.id} className={"flex items-center gap-2 text-sm " + t.sub}>
-                      <span className="font-medium" style={{ color: m?.color }}>{m?.nombre ?? "—"}</span>
-                      <span className="truncate">· {n.nombre}</span>
-                      <span className="ml-auto"><FechaBadge fecha={n.fecha} t={t} /></span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            <Btn t={t} tone="soft" className="mt-3 w-full" onClick={() => goTab("calendario")}>📅 Ver calendario completo</Btn>
-          </div>
-        </Fade>
-
-        <Fade k="riesgo" className="">
-          <div className={cardBase + " " + t.card}>
-            <h2 className={"font-bold mb-3 " + t.text}>🚨 Requieren atención</h2>
-            {riesgos.length === 0 ? (
-              <p className={"text-sm " + t.faint}>Nada pendiente: todo tu peso está calificado. 🎉</p>
-            ) : (
-              <div className="space-y-2">
-                {riesgos.slice(0, 4).map((r) => (
-                  <div key={r.m.id} className={"flex items-center gap-2 text-sm " + t.sub}>
-                    <span className="font-medium" style={{ color: r.m.color }}>{r.m.nombre}</span>
-                    <span className="ml-auto">
-                      {r.margen < 0 ? (
-                        <span className="text-red-500 font-semibold">🔴 imposible ganarla</span>
-                      ) : r.margen < 0.5 ? (
-                        <span className="text-amber-500 font-semibold">🟠 margen {r.margen.toFixed(2)}</span>
-                      ) : (
-                        <span className={t.ok + " font-semibold"}>🟢 margen {r.margen.toFixed(2)}</span>
-                      )}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <Btn t={t} tone="soft" className="mt-3 w-full" onClick={() => goTab("simulador")}>🎯 Ver simulador completo</Btn>
-          </div>
-        </Fade>
-      </div>
-    </div>
-  );
-}
-
-// ==================== APP PRINCIPAL ====================
-
-/**
- * Componente raíz: encabezado hero con degradado y estadísticas, pestañas
- * (superior en escritorio, inferior fija en móvil) y animación por pestaña.
- */
-export default function App() {
-  const { data, refresh } = useDB();
-  const [tab, setTab] = useState<"inicio" | "materias" | "notas" | "simulador" | "horarios" | "calendario">("inicio");
-
-  const cfg: Config = data.config[0];
-  const t = tokens(!!cfg.dark);
-
-  const toggleDark = () => { MiniDB.saveConfig({ dark: !cfg.dark }); refresh(); };
-
-  const tabs = [
-    { id: "inicio", icon: "🏠", label: "Inicio" },
-    { id: "materias", icon: "📚", label: "Materias" },
-    { id: "notas", icon: "📝", label: "Notas" },
-    { id: "simulador", icon: "🎯", label: "Simulador" },
-    { id: "horarios", icon: "🗓️", label: "Horarios" },
-    { id: "calendario", icon: "📅", label: "Calendario" },
-  ] as const;
-
-  // Semestres registrados + selector del semestre activo (único visible)
-  const semestres: string[] = cfg.semestres || [];
-  const cambiarSemestre = (val: string) => {
-    if (val === "__nuevo") {
-      const nombre = prompt("📝 Nombre del nuevo semestre (ej: 2027-1):", "");
-      if (nombre && nombre.trim()) {
-        const n = nombre.trim();
-        MiniDB.saveConfig({
-          semestres: semestres.includes(n) ? semestres : [...semestres, n],
-          activo: n,
-        });
-        refresh();
-      }
-      return;
-    }
-    MiniDB.saveConfig({ activo: val });
-    refresh();
-  };
-
-  // Estadísticas del encabezado: solo el semestre activo
-  const mats = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === cfg.activo);
-  let suma = 0, peso = 0;
-  mats.forEach((m) => {
-    const p = promedio(data.notas, m.id);
-    if (p !== null) { suma += p * m.creditos; peso += m.creditos; }
-  });
-  const promGeneral = peso ? suma / peso : null;
-
-  return (
-    <div className={"min-h-screen " + t.page + " transition-colors"}>
-      <div className="max-w-4xl mx-auto p-4 sm:p-8 pb-24 md:pb-8">
-        {/* --- Encabezado hero con degradado --- */}
-        <header className={"relative overflow-hidden rounded-3xl mb-6 p-6 sm:p-8 text-white shadow-lg bg-gradient-to-br " + t.hero}>
-          <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/10 pointer-events-none" />
-          <div className="absolute -bottom-16 -left-8 w-48 h-48 rounded-full bg-black/10 pointer-events-none" />
-          <div className="relative flex items-start justify-between gap-3">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold">🎓 Seguidor de Notas</h1>
-              <p className="text-sm text-white/80">Tu semestre de un vistazo: notas, simulador, horarios y calendario.</p>
-            </div>
-            <button onClick={toggleDark}
-              className="text-2xl rounded-xl px-3 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
-              title={cfg.dark ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}>
-              {cfg.dark ? "☀️" : "🌙"}
-            </button>
-          </div>
-          <div className="relative grid grid-cols-3 gap-3 mt-6">
-            <div className={"rounded-2xl p-3 " + t.heroCard}>
-              <div className="text-[10px] uppercase font-bold text-white/70">Promedio</div>
-              <div className="text-2xl font-extrabold">{promGeneral !== null ? promGeneral.toFixed(2) : "—"}</div>
-            </div>
-            <div className={"rounded-2xl p-3 " + t.heroCard}>
-              <div className="text-[10px] uppercase font-bold text-white/70">Materias</div>
-              <div className="text-2xl font-extrabold">{mats.length}</div>
-            </div>
-            <div className={"rounded-2xl p-3 " + t.heroCard}>
-              <div className="text-[10px] uppercase font-bold text-white/70">Créditos</div>
-              <div className="text-2xl font-extrabold">{mats.reduce((s, m) => s + m.creditos, 0)}</div>
-            </div>
-          </div>
-          {/* --- Selector de semestre activo --- */}
-          <div className="relative flex flex-wrap items-center gap-2 mt-4">
-            <span className="text-[10px] uppercase font-bold text-white/70">Semestre activo</span>
-            <select value={cfg.activo} onChange={(e) => cambiarSemestre(e.target.value)}
-              className="rounded-xl px-3 py-1.5 text-sm font-semibold bg-white/15 border border-white/25 text-white backdrop-blur focus:outline-none">
-              {semestres.length === 0 && <option value="">— sin semestres —</option>}
-              {semestres.map((s) => (
-                <option key={s} value={s} className="text-slate-800">
-                  {s + ((cfg.archivados || []).includes(s) ? " (archivado)" : "")}
-                </option>
-              ))}
-              <option value="__nuevo" className="text-slate-800">➕ Añadir semestre…</option>
-            </select>
-          </div>
-        </header>
-
-        {/* --- Navegación superior (solo escritorio) --- */}
-        <nav className={"hidden md:flex flex-wrap gap-2 mb-6 rounded-xl p-1.5 border shadow-sm w-fit mx-auto " + t.nav}>
-          {tabs.map((x) => (
-            <button key={x.id} onClick={() => setTab(x.id)}
-              className={"px-4 py-2 rounded-lg text-sm font-semibold transition " +
-                (tab === x.id ? "bg-indigo-600 text-white shadow" : t.navIn)}>
-              {x.icon} {x.label}
-            </button>
-          ))}
-        </nav>
-
-        {/* Animación de entrada al cambiar de pestaña */}
-        <Fade k={tab}>
-          {tab === "inicio" && <TabDashboard data={data} refresh={refresh} t={t} goTab={setTab} />}
-          {tab === "materias" && <TabMaterias data={data} refresh={refresh} t={t} />}
-          {tab === "notas" && <TabNotas data={data} refresh={refresh} t={t} />}
-          {tab === "simulador" && <TabSimulador data={data} refresh={refresh} t={t} />}
-          {tab === "horarios" && <TabHorarios data={data} refresh={refresh} t={t} />}
-          {tab === "calendario" && <TabCalendario data={data} t={t} />}
-        </Fade>
-
-        <footer className={"mt-8 text-center text-xs " + t.faint}>
-          🗄️ Tus datos se guardan en la base de datos local de este navegador.
-        </footer>
-      </div>
-
-      {/* --- Navegación inferior fija (solo móvil) --- */}
-      <nav className={"fixed bottom-0 inset-x-0 z-50 md:hidden border-t backdrop-blur " + t.navMob}
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-        <div className="grid grid-cols-6 max-w-4xl mx-auto">
-          {tabs.map((x) => (
-            <button key={x.id} onClick={() => setTab(x.id)}
-              className={"flex flex-col items-center gap-0.5 py-2 text-[10px] font-semibold transition " +
-                (tab === x.id ? "text-indigo-500" : t.sub)}>
-              <span className="text-xl leading-none">{x.icon}</span>
-              {x.label}
-            </button>
-          ))}
-        </div>
-      </nav>
-    </div>
-  );
-}
