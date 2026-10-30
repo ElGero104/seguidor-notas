@@ -577,6 +577,10 @@ function App() {
   );
 }
 
+
+// Montaje de la app en el DOM (React 18 UMD): sin esto, la app nunca se renderiza
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
   </script>
 
   <script>
