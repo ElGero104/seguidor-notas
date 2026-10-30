@@ -49,8 +49,9 @@ jobs:
 
       # Pruebas de las fórmulas puras: promedio ponderado, nota requerida,
       # días hasta entrega, estado de nota y CRC32 del generador de Excel.
+      # (.cjs: el package.json del repo es "type": "module", y este test es CommonJS)
       - name: Probar las fórmulas (promedio, nota requerida, CRC32)
-        run: set -o pipefail; node scripts/test-formulas.js 2>&1 | tee test-output.log
+        run: set -o pipefail; node scripts/test-formulas.cjs 2>&1 | tee test-output.log
         env:
           # Permite que el test abra un issue de diagnóstico si falla.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
