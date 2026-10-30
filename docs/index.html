@@ -5,12 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🎓 Seguidor de Notas</title>
   <meta name="description" content="Mini app para seguimiento de notas académicas: materias por semestre, notas ponderadas y horarios." />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tailwind: fuente principal + respaldo automático en jsdelivr si la primera está bloqueada -->
+  <script src="https://cdn.tailwindcss.com" onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4';document.head.appendChild(s);"></script>
+  <!-- React 18 UMD desde jsdelivr -->
   <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
   <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <!-- Babel standalone para compilar el TSX en el navegador -->
   <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.25.6/babel.min.js"></script>
   <style>
     html { font-family: ui-sans-serif, system-ui, sans-serif; }
+    body { margin: 0; background: #f1f5f9; }
     #fatal { white-space: pre-wrap; font-family: monospace; font-size: 12px; }
   </style>
 </head>
@@ -522,6 +526,159 @@ function TabHorarios({ data, refresh }: any) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ==================== PESTAÑA NOTAS (ESTRUCTURA DE EVALUACIÓN) ====================
+
+/**
+ * Vista de notas basada en las materias inscritas.
+ *
+ * Para cada materia se puede:
+ * 1. Configurar la ESTRUCTURA: indicar la cantidad de notas y la app genera
+ *    automáticamente N evaluaciones con pesos iguales (la última ajusta el
+ *    residuo para que sumen exactamente 100%). Reemplaza las notas actuales.
+ * 2. Editar cada nota inline: nombre, peso (%) y valor (0-5), con UPDATE
+ *    inmediato en la DB.
+ * 3. Ver el promedio ponderado y la suma de pesos (alerta si ≠ 100%).
+ */
+function TabNotas({ data, refresh }: any) {
+  // Cantidad de notas por materia, escrita en el input antes de generar
+  // (estado local porque aún no pertenece a la DB)
+  const [cantidades, setCantidades] = useState<Record<string, string>>({});
+
+  /**
+   * Genera la estructura de evaluación de una materia:
+   * DELETE de las notas actuales + INSERT de N notas con pesos iguales.
+   * La última nota absorbe el redondeo para que la suma sea exactamente 100
+   * (ej: 3 notas -> 33.3, 33.3, 33.4).
+   */
+  const generar = (m: Materia) => {
+    const n = parseInt(cantidades[m.id] || "", 10);
+    if (!n || n < 1 || n > 20) {
+      alert("⚠️ Ingresa una cantidad de notas entre 1 y 20.");
+      return;
+    }
+    // Confirmación: generar la estructura reemplaza las notas existentes
+    const actuales = MiniDB.find<Nota>("notas", (x) => x.materiaId === m.id);
+    if (actuales.length > 0 && !confirm(`¿Reemplazar las ${actuales.length} notas actuales de ${m.nombre}?`)) return;
+
+    MiniDB.removeWhere("notas", (x) => x.materiaId === m.id); // limpiar notas previas
+    const peso = Math.floor((100 / n) * 10) / 10; // peso base redondeado a 1 decimal
+    for (let i = 1; i <= n; i++) {
+      // La última nota recibe el residuo para que la suma sea exactamente 100
+      const pct = i === n ? +(100 - peso * (n - 1)).toFixed(1) : peso;
+      MiniDB.insert<Nota>("notas", {
+        id: uid(), materiaId: m.id, nombre: `Nota ${i}`, valor: 0, porcentaje: pct,
+      });
+    }
+    refresh();
+  };
+
+  // UPDATE de un campo de una nota (nombre, porcentaje o valor) directamente en la DB
+  const editarNota = (id: string, campo: "nombre" | "porcentaje" | "valor", valor: string) => {
+    const patch: any = {};
+    if (campo === "nombre") patch.nombre = valor;
+    if (campo === "porcentaje") patch.porcentaje = parseFloat(valor) || 0;
+    if (campo === "valor") patch.valor = parseFloat(valor) || 0;
+    MiniDB.update<Nota>("notas", id, patch);
+    refresh();
+  };
+
+  return (
+    <div className="space-y-5">
+      {data.materias.length === 0 && (
+        <div className={card + " text-slate-500 text-sm"}>
+          Primero crea materias en la pestaña Materias para configurar sus notas.
+        </div>
+      )}
+
+      {/* --- Una tarjeta por materia inscrita (agrupadas por semestre) --- */}
+      {[...new Set(data.materias.map((m: Materia) => m.semestre || "Sin semestre"))]
+        .sort()
+        .map((sem) => (
+          <div key={sem} className="space-y-4">
+            <h2 className="text-lg font-bold text-slate-700 border-b-2 border-indigo-200 pb-1">
+              📁 {sem}
+            </h2>
+            {data.materias
+              .filter((m: Materia) => (m.semestre || "Sin semestre") === sem)
+              .map((m: Materia) => {
+                const ns = MiniDB.find<Nota>("notas", (n) => n.materiaId === m.id);
+                const p = promedio(ns, m.id);
+                // Suma de pesos: si ≠ 100, el promedio es proporcional y se avisa
+                const sumaPeso = ns.reduce((s, n) => s + n.porcentaje, 0);
+
+                return (
+                  <div key={m.id} className={card} style={{ borderLeft: `5px solid ${m.color}` }}>
+                    {/* Encabezado: nombre, promedio y configurador de estructura */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                      <div>
+                        <div className="font-bold text-slate-800">{m.nombre}</div>
+                        <div className="text-sm text-slate-500">
+                          {ns.length} nota{ns.length === 1 ? "" : "s"} · pesos: {sumaPeso}%
+                          {/* Alerta si los pesos no suman 100% */}
+                          {ns.length > 0 && sumaPeso !== 100 && (
+                            <span className="text-amber-600 font-semibold"> ⚠️ deben sumar 100%</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {p !== null && (
+                          <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+                            p >= data.config[0].umbral ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+                          }`}>
+                            {p.toFixed(2)}
+                          </span>
+                        )}
+                        {/* Configurador: cantidad de notas -> genera la estructura */}
+                        <div className="flex items-center gap-2">
+                          <input
+                            className={input + " w-20"}
+                            type="number" min={1} max={20}
+                            placeholder="Nº"
+                            value={cantidades[m.id] ?? ""}
+                            onChange={(e) => setCantidades({ ...cantidades, [m.id]: e.target.value })}
+                          />
+                          <Btn tone="soft" onClick={() => generar(m)}>Generar estructura</Btn>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Filas editables: nombre | peso | valor, con UPDATE directo en la DB */}
+                    <div className="space-y-2">
+                      {ns.length === 0 && (
+                        <div className="text-sm text-slate-400">
+                          Sin estructura. Indica la cantidad de notas y pulsa "Generar estructura", o agrega notas desde la pestaña Materias.
+                        </div>
+                      )}
+                      {ns.length > 0 && (
+                        <div className="grid grid-cols-[1fr_80px_80px_32px] gap-2 text-[10px] uppercase text-slate-400 font-semibold">
+                          <span>Nombre de la nota</span><span>Peso %</span><span>Valor 0-5</span><span />
+                        </div>
+                      )}
+                      {ns.map((n: Nota) => (
+                        <div key={n.id} className="grid grid-cols-[1fr_80px_80px_32px] gap-2 items-center">
+                          <input className={input} value={n.nombre}
+                            onChange={(e) => editarNota(n.id, "nombre", e.target.value)} />
+                          <input className={input} type="number" min={0} value={n.porcentaje}
+                            title="Peso (%) en la nota final"
+                            onChange={(e) => editarNota(n.id, "porcentaje", e.target.value)} />
+                          <input className={input} type="number" min={0} max={5} step={0.1} value={n.valor}
+                            title="Calificación 0-5"
+                            onChange={(e) => editarNota(n.id, "valor", e.target.value)} />
+                          {/* DELETE de la nota individual */}
+                          <button className="text-slate-300 hover:text-red-500 justify-self-center"
+                            onClick={() => { MiniDB.remove("notas", n.id); refresh(); }}>✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        ))}
     </div>
   );
 }
