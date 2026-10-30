@@ -4,6 +4,15 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Seguidor de Notas</title>
+<meta name="theme-color" content="#4f46e5" />
+<meta name="description" content="Tu semestre de un vistazo: notas, simulador, horarios y calendario." />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Notas" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
 <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js" crossorigin></script>
 <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.7/babel.min.js" crossorigin></script>
@@ -1601,6 +1610,20 @@ function App() {
   const { data, refresh } = useDB();
   const [tab, setTab] = useState<"inicio" | "materias" | "notas" | "simulador" | "horarios" | "calendario">("inicio");
 
+  // Instalar como app (PWA): el navegador ofrece "beforeinstallprompt"
+  // cuando todo está listo; hasta entonces el botón 📲 permanece oculto.
+  const [evtInstalar, setEvtInstalar] = useState<any>(null);
+  useEffect(() => {
+    const h = (e: Event) => { e.preventDefault(); setEvtInstalar(e); };
+    window.addEventListener("beforeinstallprompt", h);
+    return () => { window.removeEventListener("beforeinstallprompt", h); };
+  }, []);
+  const instalarApp = () => {
+    if (!evtInstalar) return;
+    evtInstalar.prompt();
+    setEvtInstalar(null);
+  };
+
   const cfg: Config = data.config[0];
   const t = tokens(!!cfg.dark);
 
@@ -1672,6 +1695,13 @@ function App() {
                     if (f) restaurarJSON(f);
                   }} />
               </label>
+              {evtInstalar && (
+                <button onClick={instalarApp}
+                  className="text-xl rounded-xl px-3 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
+                  title="Instalar como aplicación en este dispositivo">
+                  📲
+                </button>
+              )}
               <button onClick={toggleDark}
                 className="text-2xl rounded-xl px-3 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
                 title={cfg.dark ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}>
@@ -1732,6 +1762,7 @@ function App() {
 
         <footer className={"mt-8 text-center text-xs " + t.faint}>
           🗄️ Tus datos se guardan en este navegador · respáldalos con 💾 desde el encabezado.
+          <br />📲 Llévala a tu celular: menú del navegador → «Añadir a pantalla de inicio».
         </footer>
       </div>
 
@@ -1779,6 +1810,12 @@ try {
 window.addEventListener("error", function (e) {
   showFatal("Error ejecutando la app:\n\n" + (e.message || String(e.error || e)));
 });
+// PWA: registrar el Service Worker (instalable y funciona sin internet)
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("./sw.js").catch(function () {});
+  });
+}
 </script>
 </body>
 </html>

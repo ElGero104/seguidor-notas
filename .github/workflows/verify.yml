@@ -36,3 +36,41 @@ jobs:
           diff base.tsx web.tsx
           # Compilar también el fuente embebido en la web
           npx --yes esbuild@0.24.0 web.tsx --outfile=/dev/null
+
+      - name: Verificar PWA (manifest, service worker e iconos)
+        run: |
+          test -f docs/manifest.json
+          test -f docs/sw.js
+          node -e "JSON.parse(require('fs').readFileSync('docs/manifest.json','utf8')); console.log('manifest OK')"
+          node --check docs/sw.js
+
+  # Genera los iconos PNG de la PWA con un script determinista (Node puro)
+  # y los confirma al repo si cambiaron. Los iconos son binarios y no viajan
+  # bien por las herramientas de push de texto, así que los crea el CI.
+  iconos:
+    needs: verificar
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Generar iconos PWA
+        run: node scripts/generar-iconos.js
+
+      - name: Confirmar si cambiaron
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/icons
+          if git diff --cached --quiet; then
+            echo "Iconos sin cambios"
+          else
+            git commit -m "chore: regenerar iconos PWA"
+            git push
+          fi

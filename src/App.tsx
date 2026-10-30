@@ -1585,6 +1585,20 @@ export default function App() {
   const { data, refresh } = useDB();
   const [tab, setTab] = useState<"inicio" | "materias" | "notas" | "simulador" | "horarios" | "calendario">("inicio");
 
+  // Instalar como app (PWA): el navegador ofrece "beforeinstallprompt"
+  // cuando todo está listo; hasta entonces el botón 📲 permanece oculto.
+  const [evtInstalar, setEvtInstalar] = useState<any>(null);
+  useEffect(() => {
+    const h = (e: Event) => { e.preventDefault(); setEvtInstalar(e); };
+    window.addEventListener("beforeinstallprompt", h);
+    return () => { window.removeEventListener("beforeinstallprompt", h); };
+  }, []);
+  const instalarApp = () => {
+    if (!evtInstalar) return;
+    evtInstalar.prompt();
+    setEvtInstalar(null);
+  };
+
   const cfg: Config = data.config[0];
   const t = tokens(!!cfg.dark);
 
@@ -1656,6 +1670,13 @@ export default function App() {
                     if (f) restaurarJSON(f);
                   }} />
               </label>
+              {evtInstalar && (
+                <button onClick={instalarApp}
+                  className="text-xl rounded-xl px-3 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
+                  title="Instalar como aplicación en este dispositivo">
+                  📲
+                </button>
+              )}
               <button onClick={toggleDark}
                 className="text-2xl rounded-xl px-3 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
                 title={cfg.dark ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}>
@@ -1716,6 +1737,7 @@ export default function App() {
 
         <footer className={"mt-8 text-center text-xs " + t.faint}>
           🗄️ Tus datos se guardan en este navegador · respáldalos con 💾 desde el encabezado.
+          <br />📲 Llévala a tu celular: menú del navegador → «Añadir a pantalla de inicio».
         </footer>
       </div>
 
