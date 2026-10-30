@@ -158,6 +158,7 @@ const MiniDB = {
     const db = MiniDB.load();
     db.config[0] = { ...db.config[0], ...patch };
     MiniDB.persist(db);
+    syncConfigCloud(db.config[0]);
   },
 };
 
@@ -194,6 +195,42 @@ async function syncCloud(db: typeof DB_SCHEMA) {
   } catch {}
 }
 
+async function syncConfigCloud(cfg: Config) {
+  try {
+    const { data: s } = await getSb().auth.getSession();
+    const uidUser = s?.session?.user?.id;
+    if (!uidUser) return;
+    await getSb().from("config_usuario").upsert({
+      user_id: uidUser,
+      dark: cfg.dark,
+      nota_minima: cfg.nota_minima,
+      nota_ok: cfg.nota_ok,
+      archivados: cfg.archivados,
+      activo: cfg.activo,
+      semestres: cfg.semestres,
+    });
+    for (const nombre of cfg.semestres) {
+      await getSb().from("semestres").upsert({
+        id: semestreId(uidUser, nombre),
+        user_id: uidUser,
+        nombre,
+        activo: nombre === cfg.activo,
+      });
+    }
+  } catch {}
+}
+
+function semestreId(userId: string, nombre: string) {
+  let h = 2166136261 >>> 0;
+  const s = userId + "|" + nombre;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  const hex = h.toString(16).padStart(8, "0");
+  return `00000000-0000-4000-8000-${hex}${hex.slice(0, 4)}`;
+}
+
 async function pullCloud() {
   try {
     const { data: s } = await getSb().auth.getSession();
@@ -201,9 +238,25 @@ async function pullCloud() {
     if (!uidUser) return;
     const db = MiniDB.load();
     const get = async (remote: string) => (await getSb().from(remote).select("*").eq("user_id", uidUser)).data || [];
-    const [mats, notas, clases, eventos] = await Promise.all([
-      get("materias"), get("notas"), get("clases"), get("eventos"),
+    const [mats, notas, clases, eventos, sems, cfgRow] = await Promise.all([
+      get("materias"), get("notas"), get("clases"), get("eventos"), get("semestres"), get("config_usuario"),
     ]);
+    if (sems.length) {
+      const nombres = sems.map((s: any) => s.nombre);
+      const activo = (sems.find((s: any) => s.activo) || {}).nombre || nombres.slice().sort().pop() || "";
+      db.config[0] = { ...db.config[0], semestres: nombres, activo };
+    }
+    if (cfgRow[0]) {
+      db.config[0] = {
+        ...db.config[0],
+        dark: cfgRow[0].dark,
+        nota_minima: cfgRow[0].nota_minima,
+        nota_ok: cfgRow[0].nota_ok,
+        archivados: cfgRow[0].archivados || [],
+        activo: cfgRow[0].activo || db.config[0].activo,
+        semestres: cfgRow[0].semestres?.length ? cfgRow[0].semestres : db.config[0].semestres,
+      };
+    }
     (db.materias as Materia[]) = mats.map((m: any) => ({ id: m.id, nombre: m.nombre, profesor: m.profesor ?? "", creditos: m.creditos ?? 0, color: m.color ?? COLORS[0], semestre: m.semestre_nombre ?? "Sin semestre" }));
     (db.notas as Nota[]) = notas.map((n: any) => ({ id: n.id, materiaId: n.materia_id, nombre: n.nombre, valor: n.puntaje, porcentaje: n.porcentaje ?? 0, fecha: n.fecha ?? undefined }));
     (db.clases as Clase[]) = clases.map((c: any) => ({ id: c.id, materiaId: c.materia_id, dia: c.dia, inicio: c.inicio, fin: c.fin, salon: c.salon ?? "" }));
