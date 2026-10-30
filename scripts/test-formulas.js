@@ -14,12 +14,26 @@ const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "src", "App.tsx"), "utf8");
 
+/** Si algo explota, deja una anotación legible en GitHub Actions. */
+process.on("uncaughtException", (e) => {
+  console.log("::error::" + String((e && e.message) || e).slice(0, 300).replace(/\n/g, " "));
+  process.exit(1);
+});
+
 /** Extrae el fragmento entre dos marcas de sección. */
 function extraer(inicio, fin) {
   const i = src.indexOf(inicio);
   const j = src.indexOf(fin, i);
   if (i < 0 || j < 0) throw new Error("No se encontró la sección: " + inicio);
   return src.slice(i, j);
+}
+
+/** Extrae una función puntual por su firma (para funciones que viven en otra sección). */
+function extraerFuncion(firma) {
+  const i = src.indexOf(firma);
+  const j = i < 0 ? -1 : src.indexOf("\n}", i);
+  if (i < 0 || j < 0) throw new Error("No se encontró la función: " + firma);
+  return src.slice(i, j + 2);
 }
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "seguidor-test-"));
@@ -34,15 +48,18 @@ function compilar(nombre, fragmento, exportar) {
 }
 
 let fallos = 0;
+const nombresFallos = [];
 function check(nombre, cond) {
   if (cond) console.log("  OK " + nombre);
-  else { console.error("  FALLO " + nombre); fallos++; }
+  else { console.error("  FALLO " + nombre); fallos++; nombresFallos.push(nombre); }
 }
 
 // ---------- Cálculos académicos ----------
+// estadoTxt vive en la sección TEMA (DARK MODE), se extrae aparte.
 const { promedio, calculo, diasHasta, estadoTxt } = compilar(
   "calculos",
-  extraer("// ==================== CÁLCULOS ACADÉMICOS", "// ==================== TEMA (DARK MODE)"),
+  extraer("// ==================== CÁLCULOS ACADÉMICOS", "// ==================== TEMA (DARK MODE)") +
+    "\n" + extraerFuncion("function estadoTxt"),
   "{ promedio, calculo, diasHasta, estadoTxt }"
 );
 
@@ -104,6 +121,7 @@ check("cNum celda numérica", cNum(1, 2, 4.5) === '<c r="B2"><v>4.5</v></c>');
 console.log("");
 if (fallos > 0) {
   console.error("❌ " + fallos + " prueba(s) fallaron");
+  console.log("::error::Pruebas de fórmulas fallaron: " + nombresFallos.join(" | ").slice(0, 300));
   process.exit(1);
 }
 console.log("✅ Todas las pruebas de fórmulas pasaron");
