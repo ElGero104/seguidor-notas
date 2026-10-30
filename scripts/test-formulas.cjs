@@ -134,7 +134,7 @@ check("4.5 = sobresaliente (ok)", estadoTxt(4.5, cfgT, tT) === "text-emerald-600
 // ---------- Generador de Excel (.xlsx) ----------
 const { crc32, colL, cStr, cNum } = compilar(
   "excel",
-  extraer("// ==================== RESPALDO EXCEL (.xlsx)", "// ==================== PESTAÑA MATERIAS"),
+  extraer("// ==================== RESPALDO EXCEL (.xlsx)", "// ==================== RECURSOS POR MATERIA"),
   "{ crc32, colL, cStr, cNum }"
 );
 

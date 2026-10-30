@@ -60,6 +60,15 @@ type Evento = {
   lugar?: string; // opcional
 };
 
+// Recurso de una materia: link de Zoom/Meet, carpeta de Drive, syllabus, etc.
+type Recurso = {
+  id: string;
+  materiaId: string;
+  titulo: string;
+  url: string;
+  tipo: "link" | "zoom" | "drive" | "pdf" | "otro";
+};
+
 // Configuración global (tabla singleton, fila 0)
 type Config = {
   dark: boolean; // tema oscuro
@@ -92,6 +101,7 @@ const DB_SCHEMA = {
   notas: [] as Nota[],
   clases: [] as Clase[],
   eventos: [] as Evento[],
+  recursos: [] as Recurso[],
   config: [CONFIG_DEFAULT],
 };
 
@@ -171,6 +181,7 @@ const CLOUD_TABLES: Record<string, string> = {
   notas: "notas",
   clases: "clases",
   eventos: "eventos",
+  recursos: "recursos",
 };
 
 function cloudRow(table: string, row: Row, userId: string) {
@@ -179,6 +190,7 @@ function cloudRow(table: string, row: Row, userId: string) {
   if (table === "notas") Object.assign(base, { materia_id: row.materiaId, nombre: row.nombre, puntaje: row.valor, puntaje_maximo: 5, porcentaje: row.porcentaje, fecha: row.fecha ?? null });
   if (table === "clases") Object.assign(base, { materia_id: row.materiaId, dia: row.dia, inicio: row.inicio, fin: row.fin, salon: row.salon });
   if (table === "eventos") Object.assign(base, { titulo: row.titulo, fecha: row.fecha, hora: row.hora ?? null, lugar: row.lugar ?? null });
+  if (table === "recursos") Object.assign(base, { materia_id: row.materiaId, titulo: row.titulo, url: row.url ?? "", tipo: row.tipo ?? "link" });
   return base;
 }
 
@@ -248,8 +260,8 @@ async function pullCloud() {
     if (!uidUser) return;
     const db = MiniDB.load();
     const get = async (remote: string) => (await getSb().from(remote).select("*").eq("user_id", uidUser)).data || [];
-    const [mats, notas, clases, eventos, sems, cfgRow] = await Promise.all([
-      get("materias"), get("notas"), get("clases"), get("eventos"), get("semestres"), get("config_usuario"),
+    const [mats, notas, clases, eventos, recursos, sems, cfgRow] = await Promise.all([
+      get("materias"), get("notas"), get("clases"), get("eventos"), get("recursos"), get("semestres"), get("config_usuario"),
     ]);
     if (sems.length) {
       const nombres = sems.map((s: any) => s.nombre);
@@ -271,6 +283,7 @@ async function pullCloud() {
     (db.notas as Nota[]) = notas.map((n: any) => ({ id: n.id, materiaId: n.materia_id, nombre: n.nombre, valor: n.puntaje, porcentaje: n.porcentaje ?? 0, fecha: n.fecha ?? undefined }));
     (db.clases as Clase[]) = clases.map((c: any) => ({ id: c.id, materiaId: c.materia_id, dia: c.dia, inicio: c.inicio, fin: c.fin, salon: c.salon ?? "" }));
     (db.eventos as Evento[]) = eventos.map((e: any) => ({ id: e.id, titulo: e.titulo, fecha: e.fecha, hora: e.hora ?? undefined, lugar: e.lugar ?? undefined }));
+    (db.recursos as Recurso[]) = recursos.map((r: any) => ({ id: r.id, materiaId: r.materia_id, titulo: r.titulo, url: r.url ?? "", tipo: r.tipo ?? "link" }));
     MiniDB.persist(db);
   } catch {}
 }
@@ -879,6 +892,208 @@ function exportarExcel(data: any) {
   URL.revokeObjectURL(url);
 }
 
+// ==================== RECURSOS POR MATERIA (hub de links) ====================
+
+const REC_TIPOS: Record<string, string> = {
+  link: "🔗", zoom: "🎥", drive: "📁", pdf: "📄", otro: "📎",
+};
+
+function RecursosMateria({ materiaId, data, refresh, t }: any) {
+  const [titulo, setTitulo] = useState("");
+  const [url, setUrl] = useState("");
+  const [tipo, setTipo] = useState<Recurso["tipo"]>("link");
+  const recursos = (data.recursos as Recurso[]).filter((r) => r.materiaId === materiaId);
+
+  const agregar = () => {
+    if (!titulo.trim()) return;
+    MiniDB.insert<Recurso>("recursos", { id: uid(), materiaId, titulo: titulo.trim(), url: url.trim(), tipo });
+    setTitulo(""); setUrl("");
+    refresh();
+  };
+  const eliminar = (id: string) => {
+    MiniDB.remove("recursos", id);
+    refresh();
+  };
+
+  return (
+    <div className={"mt-3 rounded-xl p-3 " + t.group}>
+      <div className={"text-xs font-bold mb-2 " + t.sub}>📎 Recursos de la materia ({recursos.length})</div>
+      <div className="space-y-1.5 mb-2">
+        {recursos.length === 0 && <div className={"text-xs " + t.faint}>Sin recursos aún: añade Zoom/Meet, Drive, syllabus…</div>}
+        {recursos.map((r) => (
+          <div key={r.id} className="flex items-center gap-2 text-sm">
+            <span>{REC_TIPOS[r.tipo] || "📎"}</span>
+            {r.url ? (
+              <a href={r.url} target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline truncate">{r.titulo}</a>
+            ) : (
+              <span className={t.text}>{r.titulo}</span>
+            )}
+            <button onClick={() => eliminar(r.id)} className="ml-auto text-red-400 hover:text-red-500 text-xs" title="Eliminar recurso">✕</button>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <input className={inputBase + " " + t.input + " flex-1 min-w-[120px]"} placeholder="Título (ej: Clase Zoom)"
+          value={titulo} onChange={(e) => setTitulo(e.target.value)} />
+        <input className={inputBase + " " + t.input + " flex-1 min-w-[140px]"} placeholder="https://… (opcional)"
+          value={url} onChange={(e) => setUrl(e.target.value)} />
+        <select className={inputBase + " " + t.input + " w-auto"} value={tipo} onChange={(e) => setTipo(e.target.value as any)}>
+          <option value="link">🔗 Link</option>
+          <option value="zoom">🎥 Zoom/Meet</option>
+          <option value="drive">📁 Drive</option>
+          <option value="pdf">📄 PDF</option>
+          <option value="otro">📎 Otro</option>
+        </select>
+        <Btn t={t} tone="soft" onClick={agregar}>＋</Btn>
+      </div>
+    </div>
+  );
+}
+
+// ==================== POMODORO ====================
+
+const POM_KEY = "seguidor-notas-pomodoro";
+
+function TabPomodoro({ data, t }: any) {
+  const [segundos, setSegundos] = useState(25 * 60);
+  const [corriendo, setCorriendo] = useState(false);
+  const [fase, setFase] = useState<"trabajo" | "descanso">("trabajo");
+  const [sesiones, setSesiones] = useState<number>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(POM_KEY) || "{}");
+      return raw.hoy === new Date().toISOString().slice(0, 10) ? raw.count || 0 : 0;
+    } catch { return 0; }
+  });
+
+  useEffect(() => {
+    if (!corriendo) return;
+    const id = setInterval(() => setSegundos((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [corriendo]);
+
+  useEffect(() => {
+    if (segundos === 0) {
+      if (fase === "trabajo") {
+        const count = sesiones + 1;
+        setSesiones(count);
+        localStorage.setItem(POM_KEY, JSON.stringify({ hoy: new Date().toISOString().slice(0, 10), count }));
+        setFase("descanso");
+        setSegundos(5 * 60);
+      } else {
+        setFase("trabajo");
+        setSegundos(25 * 60);
+      }
+      setCorriendo(false);
+    }
+  }, [segundos, fase, sesiones]);
+
+  const min = Math.floor(segundos / 60);
+  const seg = segundos % 60;
+  const total = fase === "trabajo" ? 25 * 60 : 5 * 60;
+  const pct = ((total - segundos) / total) * 100;
+
+  // Entregas próximas (7 días) para estudiar "para el parcial de mañana"
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const idsMat = new Set((data.materias as Materia[]).map((m) => m.id));
+  const proximas = (data.notas as Nota[])
+    .filter((n) => n.fecha && idsMat.has(n.materiaId))
+    .map((n) => ({ ...n, dias: diasHasta(n.fecha) }))
+    .filter((n) => n.dias !== null && n.dias >= 0 && n.dias <= 7)
+    .sort((a, b) => (a.dias! - b.dias!))
+    .slice(0, 5);
+
+  return (
+    <div className="space-y-5">
+      <div className={cardBase + " " + t.card + " text-center"}>
+        <h2 className={"font-bold mb-1 " + t.text}>⏱️ Pomodoro</h2>
+        <div className={"text-xs mb-4 " + t.sub}>
+          {fase === "trabajo" ? "🎯 Sesión de estudio (25 min)" : "☕ Descanso (5 min)"}
+        </div>
+        <div className="relative inline-flex items-center justify-center mb-4">
+          <svg width="180" height="180" viewBox="0 0 180 180">
+            <circle cx="90" cy="90" r="80" fill="none" strokeWidth="12" className={t.page.includes("slate-900") ? "stroke-slate-700" : "stroke-slate-200"} />
+            <circle cx="90" cy="90" r="80" fill="none" strokeWidth="12" strokeLinecap="round"
+              stroke="#6366f1" strokeDasharray={2 * Math.PI * 80} strokeDashoffset={2 * Math.PI * 80 * (1 - pct / 100)}
+              transform="rotate(-90 90 90)" style={{ transition: "stroke-dashoffset 1s linear" }} />
+          </svg>
+          <div className="absolute text-4xl font-extrabold tabular-nums">
+            {String(min).padStart(2, "0")}:{String(seg).padStart(2, "0")}
+          </div>
+        </div>
+        <div className="flex justify-center gap-2">
+          <Btn t={t} onClick={() => setCorriendo(!corriendo)}>{corriendo ? "⏸ Pausar" : "▶ Iniciar"}</Btn>
+          <Btn t={t} tone="soft" onClick={() => { setCorriendo(false); setFase("trabajo"); setSegundos(25 * 60); }}>↺ Reiniciar</Btn>
+        </div>
+        <div className={"mt-4 text-sm " + t.sub}>
+          🍅 Sesiones de estudio hoy: <strong className={t.text}>{sesiones}</strong>
+        </div>
+      </div>
+
+      {proximas.length > 0 && (
+        <div className={cardBase + " " + t.card}>
+          <h2 className={"font-bold mb-3 " + t.text}>📌 Estudiar para… (próximos 7 días)</h2>
+          <div className="space-y-1.5">
+            {proximas.map((n) => {
+              const m = (data.materias as Materia[]).find((x) => x.id === n.materiaId);
+              return (
+                <div key={n.id} className={"flex items-center gap-2 text-sm " + t.sub}>
+                  <span className="font-medium" style={{ color: m?.color }}>{m?.nombre ?? "—"}</span>
+                  <span>· {n.nombre} · {n.fecha}</span>
+                  <FechaBadge fecha={n.fecha} t={t} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==================== MODO EXAMEN ====================
+
+function TabExamen({ data, t }: any) {
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const idsMat = new Set((data.materias as Materia[]).map((m) => m.id));
+  const entregas = (data.notas as Nota[])
+    .filter((n) => n.fecha && idsMat.has(n.materiaId))
+    .map((n) => ({ ...n, dias: diasHasta(n.fecha) }))
+    .filter((n) => n.dias !== null && n.dias >= 0 && n.dias <= 7)
+    .sort((a, b) => (a.dias! - b.dias!));
+
+  return (
+    <div className="space-y-4">
+      <div className={"rounded-3xl p-6 text-center text-white shadow-lg bg-gradient-to-br " + t.hero}>
+        <div className="text-4xl mb-1">📝</div>
+        <h1 className="text-2xl font-extrabold">Modo examen</h1>
+        <p className="text-sm text-white/80">Entregas de los próximos 7 días · {entregas.length} pendiente{entregas.length === 1 ? "" : "s"}</p>
+      </div>
+      {entregas.length === 0 && (
+        <div className={cardBase + " " + t.card + " text-center " + t.sub}>
+          🎉 Sin entregas en los próximos 7 días. ¡Aprovecha para adelantar!
+        </div>
+      )}
+      {entregas.map((n) => {
+        const m = (data.materias as Materia[]).find((x) => x.id === n.materiaId);
+        return (
+          <div key={n.id} className={cardBase + " " + t.card + " flex items-center gap-4"}
+            style={{ borderLeft: `6px solid ${m?.color ?? "#6366f1"}` }}>
+            <div className="text-center min-w-[64px]">
+              <div className="text-3xl font-extrabold">{n.dias === 0 ? "HOY" : `en ${n.dias} d`}</div>
+              <div className={"text-xs " + t.faint}>{n.fecha}</div>
+            </div>
+            <div className="flex-1">
+              <div className={"text-lg font-bold " + t.text}>{n.nombre}</div>
+              <div className={"text-sm " + t.sub}>{m?.nombre ?? "—"} · {n.porcentaje}% de la nota final</div>
+            </div>
+            <div className="text-2xl">{n.valor === null ? "⏳" : "✅"}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ==================== PESTAÑA MATERIAS ====================
 
 /**
@@ -911,12 +1126,13 @@ function TabMaterias({ data, refresh, t }: any) {
     refresh();
   };
 
-  // DELETE en cascada: materia + notas + clases
+  // DELETE en cascada: materia + notas + clases + recursos
   const eliminar = (id: string) => {
     setUndo("🗑️ Materia eliminada");
     MiniDB.remove("materias", id);
     MiniDB.removeWhere("notas", (n) => n.materiaId === id);
     MiniDB.removeWhere("clases", (c) => c.materiaId === id);
+    MiniDB.removeWhere("recursos", (r) => r.materiaId === id);
     refresh();
   };
 
@@ -938,6 +1154,7 @@ function TabMaterias({ data, refresh, t }: any) {
       MiniDB.remove("materias", m.id);
       MiniDB.removeWhere("notas", (n) => n.materiaId === m.id);
       MiniDB.removeWhere("clases", (c) => c.materiaId === m.id);
+      MiniDB.removeWhere("recursos", (r) => r.materiaId === m.id);
     });
     const restantes = (cfg.semestres || []).filter((s) => s !== activo);
     MiniDB.saveConfig({
@@ -1172,6 +1389,7 @@ function TabMaterias({ data, refresh, t }: any) {
                 ))}
               </div>
               <FormNota materiaId={m.id} refresh={refresh} t={t} />
+              <RecursosMateria materiaId={m.id} data={data} refresh={refresh} t={t} />
             </div>
           </Fade>
         );
@@ -2031,7 +2249,7 @@ function LoginInline({ t }: any) {
  */
 export default function App() {
   const { data, refresh } = useDB();
-  const [tab, setTab] = useState<"inicio" | "materias" | "notas" | "simulador" | "horarios" | "calendario">("inicio");
+  const [tab, setTab] = useState<"inicio" | "materias" | "notas" | "simulador" | "horarios" | "calendario" | "pomodoro" | "examen">("inicio");
   const [sesion, setSesion] = useState<any>(null);
   const [authListo, setAuthListo] = useState(false);
 
@@ -2074,6 +2292,8 @@ export default function App() {
     { id: "simulador", icon: "🎯", label: "Simulador" },
     { id: "horarios", icon: "🗓️", label: "Horarios" },
     { id: "calendario", icon: "📅", label: "Calendario" },
+    { id: "pomodoro", icon: "⏱️", label: "Pomodoro" },
+    { id: "examen", icon: "📝", label: "Examen" },
   ] as const;
 
   // Semestres registrados + selector del semestre activo (único visible)
@@ -2204,6 +2424,8 @@ export default function App() {
           {tab === "simulador" && <TabSimulador data={data} refresh={refresh} t={t} />}
           {tab === "horarios" && <TabHorarios data={data} refresh={refresh} t={t} />}
           {tab === "calendario" && <TabCalendario data={data} t={t} />}
+          {tab === "pomodoro" && <TabPomodoro data={data} t={t} />}
+          {tab === "examen" && <TabExamen data={data} t={t} />}
         </Fade>
 
         <footer className={"mt-8 text-center text-xs " + t.faint}>
