@@ -526,8 +526,6 @@ function TabHorarios({ data, refresh }: any) {
   );
 }
 
-}
-
 // ==================== APP PRINCIPAL ====================
 
 /**
@@ -582,7 +580,6 @@ function App() {
   </script>
 
   <script>
-    // Errores globales visibles en pantalla (además de la consola)
     function mostrarError(titulo, detalle) {
       var f = document.getElementById("fatal");
       f.style.display = "block";
@@ -591,15 +588,11 @@ function App() {
     window.onerror = function (msg, src, line, col) {
       mostrarError("❌ Error de JavaScript: " + msg, (src || "") + " (línea " + line + ", col " + col + ")");
     };
-
-    // Compilación del TSX con diagnóstico visible en cada paso
     try {
       if (typeof React === "undefined") throw new Error("React no cargó desde el CDN (revisa tu conexión o bloqueadores).");
       if (typeof Babel === "undefined") throw new Error("Babel no cargó desde el CDN (revisa tu conexión o bloqueadores).");
-
       var src = document.getElementById("app-src").textContent;
       if (!src || src.length < 100) throw new Error("El código fuente no se encontró en el DOM.");
-
       var out;
       try {
         out = Babel.transform(src, {
@@ -610,7 +603,6 @@ function App() {
         mostrarError("❌ Error compilando el código TSX:", e.message);
         throw e;
       }
-
       try {
         var s = document.createElement("script");
         s.textContent = out.code;
