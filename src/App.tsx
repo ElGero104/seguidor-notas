@@ -1,8 +1,22 @@
 
 // Importación de React y sus hooks para manejar estado (useState) y ciclos de vida (useEffect)
 import React, { useState, useEffect } from "react";
-import { supabase } from "./supabaseClient";
-import Login from "./Login";
+
+// Cliente de Supabase: en la web standalone viene del CDN (window.supabase);
+// en un build con bundler se puede exponer el mismo global.
+declare const supabase: any;
+const SUPABASE_URL = "https://iqkkxtiuvkaecncdutpt.supabase.co";
+const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlxa2t4dGl1dmthZWNuY2R1dHB0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzODg2MTMsImV4cCI6MjEwODk2NDYxM30.cpXdGxbz0ZwjsWGc0hB5__UzLb8S3cuPP5yVtL0i35o";
+const EMAIL_DOMAIN = "@udea.edu.co";
+const sb = () =>
+  (typeof supabase !== "undefined" ? supabase : (window as any).supabase).createClient(
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY,
+    { auth: { persistSession: true, autoRefreshToken: true } }
+  );
+let supabaseClient: any = null;
+const getSb = () => (supabaseClient ??= sb());
 
 // ==================== TIPOS DE DATOS ====================
 
@@ -107,6 +121,7 @@ const MiniDB = {
 
   persist(db: typeof DB_SCHEMA) {
     localStorage.setItem(DB_KEY, JSON.stringify(db));
+    syncCloud(db);
   },
 
   insert<T extends Row>(table: keyof typeof DB_SCHEMA, row: T): T {
@@ -145,6 +160,57 @@ const MiniDB = {
     MiniDB.persist(db);
   },
 };
+
+// ==================== SINCRONIZACIÓN CON SUPABASE ====================
+// La app funciona offline con localStorage; con sesión iniciada, cada
+// escritura también se refleja en la nube (upsert por tabla) y al entrar
+// se descargan los datos del usuario desde Supabase.
+const CLOUD_TABLES: Record<string, string> = {
+  materias: "materias",
+  notas: "notas",
+  clases: "clases",
+  eventos: "eventos",
+};
+
+function cloudRow(table: string, row: Row, userId: string) {
+  const base: any = { id: row.id, user_id: userId };
+  if (table === "materias") Object.assign(base, { nombre: row.nombre, profesor: row.profesor, creditos: row.creditos, color: row.color, semestre_nombre: row.semestre });
+  if (table === "notas") Object.assign(base, { materia_id: row.materiaId, nombre: row.nombre, puntaje: row.valor, puntaje_maximo: 5, porcentaje: row.porcentaje, fecha: row.fecha ?? null });
+  if (table === "clases") Object.assign(base, { materia_id: row.materiaId, dia: row.dia, inicio: row.inicio, fin: row.fin, salon: row.salon });
+  if (table === "eventos") Object.assign(base, { titulo: row.titulo, fecha: row.fecha, hora: row.hora ?? null, lugar: row.lugar ?? null });
+  return base;
+}
+
+async function syncCloud(db: typeof DB_SCHEMA) {
+  try {
+    const { data: s } = await getSb().auth.getSession();
+    const uidUser = s?.session?.user?.id;
+    if (!uidUser) return;
+    for (const [local, remote] of Object.entries(CLOUD_TABLES)) {
+      const rows = (db as any)[local] as Row[];
+      const payload = rows.map((r) => cloudRow(local, r, uidUser));
+      if (payload.length) await getSb().from(remote).upsert(payload);
+    }
+  } catch {}
+}
+
+async function pullCloud() {
+  try {
+    const { data: s } = await getSb().auth.getSession();
+    const uidUser = s?.session?.user?.id;
+    if (!uidUser) return;
+    const db = MiniDB.load();
+    const get = async (remote: string) => (await getSb().from(remote).select("*").eq("user_id", uidUser)).data || [];
+    const [mats, notas, clases, eventos] = await Promise.all([
+      get("materias"), get("notas"), get("clases"), get("eventos"),
+    ]);
+    (db.materias as Materia[]) = mats.map((m: any) => ({ id: m.id, nombre: m.nombre, profesor: m.profesor ?? "", creditos: m.creditos ?? 0, color: m.color ?? COLORS[0], semestre: m.semestre_nombre ?? "Sin semestre" }));
+    (db.notas as Nota[]) = notas.map((n: any) => ({ id: n.id, materiaId: n.materia_id, nombre: n.nombre, valor: n.puntaje, porcentaje: n.porcentaje ?? 0, fecha: n.fecha ?? undefined }));
+    (db.clases as Clase[]) = clases.map((c: any) => ({ id: c.id, materiaId: c.materia_id, dia: c.dia, inicio: c.inicio, fin: c.fin, salon: c.salon ?? "" }));
+    (db.eventos as Evento[]) = eventos.map((e: any) => ({ id: e.id, titulo: e.titulo, fecha: e.fecha, hora: e.hora ?? undefined, lugar: e.lugar ?? undefined }));
+    MiniDB.persist(db);
+  } catch {}
+}
 
 // Generador de ids pseudoaleatorios
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -1819,6 +1885,77 @@ function TabDashboard({ data, refresh, t, goTab }: any) {
   );
 }
 
+// ==================== LOGIN (Supabase Auth por usuario) ====================
+
+/** Pantalla de acceso: pide usuario (ej: geronimo.patino) y clave. */
+function LoginInline({ t }: any) {
+  const [usuario, setUsuario] = useState("");
+  const [password, setPassword] = useState("");
+  const [modo, setModo] = useState<"login" | "registro">("login");
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const aEmail = (u: string) => (u.includes("@") ? u : u.trim() + EMAIL_DOMAIN);
+
+  const enviar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setCargando(true);
+    try {
+      const email = aEmail(usuario);
+      const r = modo === "login"
+        ? await getSb().auth.signInWithPassword({ email, password })
+        : await getSb().auth.signUp({ email, password });
+      if (r.error) throw r.error;
+    } catch (err: any) {
+      setError(err?.message === "Invalid login credentials"
+        ? "Usuario o clave incorrectos."
+        : err?.message || "Ocurrió un error. Intenta de nuevo.");
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  return (
+    <div className={"min-h-screen flex items-center justify-center p-4 " + t.page}>
+      <div className={"w-full max-w-sm rounded-3xl border shadow-lg p-8 " + t.card}>
+        <h1 className="text-2xl font-extrabold text-center">🎓 Seguidor de Notas</h1>
+        <p className="text-sm text-center mt-1 mb-6 opacity-70">
+          {modo === "login" ? "Inicia sesión para continuar" : "Crea tu cuenta"}
+        </p>
+        <form onSubmit={enviar} className="space-y-4">
+          <div>
+            <label className={labelBase}>Usuario</label>
+            <input type="text" required value={usuario} autoComplete="username"
+              onChange={(e) => setUsuario(e.target.value)}
+              placeholder="geronimo.patino"
+              className={inputBase} />
+          </div>
+          <div>
+            <label className={labelBase}>Clave</label>
+            <input type="password" required minLength={6} value={password}
+              autoComplete="current-password"
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className={inputBase} />
+          </div>
+          {error && (
+            <p className="text-sm text-red-500 bg-red-500/10 rounded-lg px-3 py-2">{error}</p>
+          )}
+          <button type="submit" disabled={cargando}
+            className="w-full rounded-lg px-3 py-2 text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition disabled:opacity-60">
+            {cargando ? "Cargando…" : modo === "login" ? "Entrar" : "Registrarme"}
+          </button>
+        </form>
+        <button
+          onClick={() => { setModo(modo === "login" ? "registro" : "login"); setError(null); }}
+          className="w-full mt-4 text-sm underline opacity-70 hover:opacity-100">
+          {modo === "login" ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ==================== APP PRINCIPAL ====================
 
 /**
@@ -1832,16 +1969,20 @@ export default function App() {
   const [authListo, setAuthListo] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    getSb().auth.getSession().then(async ({ data }: any) => {
       setSesion(data.session);
       setAuthListo(true);
+      if (data.session) { await pullCloud(); refresh(); }
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => setSesion(s));
+    const { data: sub } = getSb().auth.onAuthStateChange(async (_evt: any, s: any) => {
+      setSesion(s);
+      if (s) { await pullCloud(); refresh(); }
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
 
   if (!authListo) return null;
-  if (!sesion) return <Login onSuccess={() => setSesion(true)} t={tokens(false)} />;
+  if (!sesion) return <LoginInline t={tokens(false)} />;
 
   // Instalar como app (PWA): el navegador ofrece "beforeinstallprompt"
   // cuando todo está listo; hasta entonces el botón 📲 permanece oculto.
@@ -1928,7 +2069,7 @@ export default function App() {
                     if (f) restaurarJSON(f);
                   }} />
               </label>
-              <button onClick={() => supabase.auth.signOut()}
+              <button onClick={() => getSb().auth.signOut()}
                 className="text-xl rounded-xl px-3 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
                 title="Cerrar sesión">
                 🚪
