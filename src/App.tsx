@@ -1,6 +1,8 @@
 
 // Importación de React y sus hooks para manejar estado (useState) y ciclos de vida (useEffect)
 import React, { useState, useEffect } from "react";
+import { supabase } from "./supabaseClient";
+import Login from "./Login";
 
 // ==================== TIPOS DE DATOS ====================
 
@@ -1826,6 +1828,20 @@ function TabDashboard({ data, refresh, t, goTab }: any) {
 export default function App() {
   const { data, refresh } = useDB();
   const [tab, setTab] = useState<"inicio" | "materias" | "notas" | "simulador" | "horarios" | "calendario">("inicio");
+  const [sesion, setSesion] = useState<any>(null);
+  const [authListo, setAuthListo] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSesion(data.session);
+      setAuthListo(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => setSesion(s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  if (!authListo) return null;
+  if (!sesion) return <Login onSuccess={() => setSesion(true)} t={tokens(false)} />;
 
   // Instalar como app (PWA): el navegador ofrece "beforeinstallprompt"
   // cuando todo está listo; hasta entonces el botón 📲 permanece oculto.
@@ -1912,6 +1928,11 @@ export default function App() {
                     if (f) restaurarJSON(f);
                   }} />
               </label>
+              <button onClick={() => supabase.auth.signOut()}
+                className="text-xl rounded-xl px-3 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
+                title="Cerrar sesión">
+                🚪
+              </button>
               {evtInstalar && (
                 <button onClick={instalarApp}
                   className="text-xl rounded-xl px-3 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
