@@ -1981,9 +1981,6 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  if (!authListo) return null;
-  if (!sesion) return <LoginInline t={tokens(false)} />;
-
   // Instalar como app (PWA): el navegador ofrece "beforeinstallprompt"
   // cuando todo está listo; hasta entonces el botón 📲 permanece oculto.
   const [evtInstalar, setEvtInstalar] = useState<any>(null);
@@ -2039,6 +2036,9 @@ export default function App() {
     if (p !== null) { suma += p * m.creditos; peso += m.creditos; }
   });
   const promGeneral = peso ? suma / peso : null;
+
+  if (!authListo) return null;
+  if (!sesion) return <LoginInline t={tokens(false)} />;
 
   return (
     <div className={"min-h-screen " + t.page + " transition-colors"}>
