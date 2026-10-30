@@ -6,8 +6,12 @@ type Props = {
   t: any;
 };
 
+const EMAIL_DOMAIN = "@udea.edu.co";
+const aEmail = (usuario: string) =>
+  usuario.includes("@") ? usuario : usuario.trim() + EMAIL_DOMAIN;
+
 export default function Login({ onSuccess, t }: Props) {
-  const [email, setEmail] = useState("");
+  const [usuario, setUsuario] = useState("");
   const [password, setPassword] = useState("");
   const [modo, setModo] = useState<"login" | "registro">("login");
   const [cargando, setCargando] = useState(false);
@@ -19,16 +23,16 @@ export default function Login({ onSuccess, t }: Props) {
     setCargando(true);
     try {
       if (modo === "login") {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({ email: aEmail(usuario), password });
         if (error) throw error;
       } else {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { error } = await supabase.auth.signUp({ email: aEmail(usuario), password });
         if (error) throw error;
       }
       onSuccess();
     } catch (err: any) {
       setError(err?.message === "Invalid login credentials"
-        ? "Correo o clave incorrectos."
+        ? "Usuario o clave incorrectos."
         : err?.message || "Ocurrió un error. Intenta de nuevo.");
     } finally {
       setCargando(false);
@@ -44,13 +48,14 @@ export default function Login({ onSuccess, t }: Props) {
         </p>
         <form onSubmit={enviar} className="space-y-4">
           <div>
-            <label className={labelBase}>Correo</label>
+            <label className={labelBase}>Usuario</label>
             <input
-              type="email"
+              type="text"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="tu@correo.com"
+              value={usuario}
+              onChange={(e) => setUsuario(e.target.value)}
+              placeholder="geronimo.patino"
+              autoComplete="username"
               className={inputBase}
             />
           </div>
@@ -63,6 +68,7 @@ export default function Login({ onSuccess, t }: Props) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
+              autoComplete="current-password"
               className={inputBase}
             />
           </div>
