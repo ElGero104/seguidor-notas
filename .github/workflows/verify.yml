@@ -37,16 +37,17 @@ jobs:
           # Compilar también el fuente embebido en la web
           npx --yes esbuild@0.24.0 web.tsx --outfile=/dev/null
 
-      - name: Verificar PWA (manifest, service worker e iconos)
+      - name: Verificar PWA (manifest y service worker)
         run: |
           test -f docs/manifest.json
           test -f docs/sw.js
           node -e "JSON.parse(require('fs').readFileSync('docs/manifest.json','utf8')); console.log('manifest OK')"
           node --check docs/sw.js
 
-  # Genera los iconos PNG de la PWA con un script determinista (Node puro)
-  # y los confirma al repo si cambiaron. Los iconos son binarios y no viajan
-  # bien por las herramientas de push de texto, así que los crea el CI.
+  # Restaura los iconos PNG de la PWA desde sus versiones base64 y los
+  # confirma al repo si cambiaron. Los iconos son binarios y no viajan por
+  # las herramientas de push de texto: se guardan como base64 (texto) y el
+  # CI los decodifica con `base64 -d`, siempre con el mismo resultado.
   iconos:
     needs: verificar
     if: github.event_name == 'push'
@@ -56,12 +57,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Generar iconos PWA
-        run: node scripts/generar-iconos.js
+      - name: Generar iconos PWA (decodificar base64)
+        run: |
+          mkdir -p docs/icons
+          base64 -d scripts/iconos/icon-192.png.b64 > docs/icons/icon-192.png
+          base64 -d scripts/iconos/icon-512.png.b64 > docs/icons/icon-512.png
+          base64 -d scripts/iconos/maskable-512.png.b64 > docs/icons/maskable-512.png
+          test -s docs/icons/icon-192.png
+          test -s docs/icons/icon-512.png
+          test -s docs/icons/maskable-512.png
 
       - name: Confirmar si cambiaron
         run: |
