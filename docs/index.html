@@ -13,8 +13,7 @@
 <body>
 <div id="fatal" style="display:none;max-width:640px;margin:2rem auto;padding:1rem;background:#fee2e2;border:1px solid #ef4444;border-radius:8px;color:#7f1d1d;font-family:monospace;white-space:pre-wrap;"></div>
 <div id="root"><div style="padding:2rem;text-align:center;font-family:sans-serif;color:#64748b">⏳ Cargando la app…</div></div>
-<script type="text/babel" data-type="module" data-presets="typescript,react">
-try {
+<script type="text/plain" id="tsx-source">
 
 // Importación de React y sus hooks para manejar estado (useState) y ciclos de vida (useEffect)
 const { useState, useEffect } = React;
@@ -1107,18 +1106,25 @@ function App() {
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 
-} catch (e) {
-  var f = document.getElementById("fatal");
-  f.textContent = "❌ Error compilando el código TSX:\n\n" + (e && e.message ? e.message : String(e));
-  f.style.display = "block";
-}
 </script>
 <script>
-window.addEventListener("error", function (e) {
+function showFatal(msg) {
   var f = document.getElementById("fatal");
-  if (!f) return;
-  f.textContent = "❌ Error ejecutando la app:\n\n" + (e.message || String(e.error || e));
+  f.textContent = "❌ " + msg;
   f.style.display = "block";
+}
+try {
+  var src = document.getElementById("tsx-source").textContent;
+  var out = Babel.transform(src, {
+    presets: [["typescript", { isTSX: true, allExtensions: true }], "react"],
+    filename: "App.tsx"
+  });
+  new Function(out.code)();
+} catch (e) {
+  showFatal("Error compilando el código TSX:\n\n" + (e && e.message ? e.message : String(e)));
+}
+window.addEventListener("error", function (e) {
+  showFatal("Error ejecutando la app:\n\n" + (e.message || String(e.error || e)));
 });
 </script>
 </body>
