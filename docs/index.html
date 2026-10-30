@@ -5,25 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🎓 Seguidor de Notas</title>
   <meta name="description" content="Mini app para seguimiento de notas académicas: materias por semestre, notas ponderadas y horarios." />
-  <!-- Tailwind CSS por CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- React 18 UMD -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <!-- Babel standalone para compilar el TSX en el navegador -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.25.6/babel.min.js"></script>
   <style>
     html { font-family: ui-sans-serif, system-ui, sans-serif; }
+    #fatal { white-space: pre-wrap; font-family: monospace; font-size: 12px; }
   </style>
 </head>
 <body>
   <div id="root">
-    <div style="padding:2rem;text-align:center;font-family:sans-serif;color:#64748b">
+    <div style="padding:2rem;text-align:center;color:#64748b">
       Cargando la app…
     </div>
   </div>
+  <div id="fatal" style="display:none;padding:1rem;margin:1rem;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#b91c1c"></div>
 
-  <!-- Código fuente de la app en TSX, compilado en el navegador con preset typescript(isTSX)+react -->
   <script type="text/plain" id="app-src">
 
 const { useState, useEffect } = React; // React viene del CDN (UMD)
@@ -581,22 +579,49 @@ function App() {
   );
 }
 
-
-// Montaje de la app en el DOM (React 18 UMD)
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-
   </script>
 
   <script>
-    // Compila el TSX (tipos de TypeScript + JSX) y lo ejecuta
-    var src = document.getElementById("app-src").textContent;
-    var out = Babel.transform(src, {
-      presets: [["typescript", { isTSX: true, allExtensions: true }], "react"],
-      filename: "App.tsx"
-    });
-    var s = document.createElement("script");
-    s.textContent = out.code;
-    document.body.appendChild(s);
+    // Errores globales visibles en pantalla (además de la consola)
+    function mostrarError(titulo, detalle) {
+      var f = document.getElementById("fatal");
+      f.style.display = "block";
+      f.textContent = titulo + "\n\n" + detalle;
+    }
+    window.onerror = function (msg, src, line, col) {
+      mostrarError("❌ Error de JavaScript: " + msg, (src || "") + " (línea " + line + ", col " + col + ")");
+    };
+
+    // Compilación del TSX con diagnóstico visible en cada paso
+    try {
+      if (typeof React === "undefined") throw new Error("React no cargó desde el CDN (revisa tu conexión o bloqueadores).");
+      if (typeof Babel === "undefined") throw new Error("Babel no cargó desde el CDN (revisa tu conexión o bloqueadores).");
+
+      var src = document.getElementById("app-src").textContent;
+      if (!src || src.length < 100) throw new Error("El código fuente no se encontró en el DOM.");
+
+      var out;
+      try {
+        out = Babel.transform(src, {
+          presets: [["typescript", { isTSX: true, allExtensions: true }], "react"],
+          filename: "App.tsx"
+        });
+      } catch (e) {
+        mostrarError("❌ Error compilando el código TSX:", e.message);
+        throw e;
+      }
+
+      try {
+        var s = document.createElement("script");
+        s.textContent = out.code;
+        document.body.appendChild(s);
+      } catch (e) {
+        mostrarError("❌ Error ejecutando la app compilada:", e.message);
+        throw e;
+      }
+    } catch (e) {
+      console.error(e);
+    }
   </script>
 </body>
 </html>
