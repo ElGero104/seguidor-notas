@@ -44,6 +44,11 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('docs/manifest.json','utf8')); console.log('manifest OK')"
           node --check docs/sw.js
 
+      # Pruebas de las fórmulas puras: promedio ponderado, nota requerida,
+      # días hasta entrega, estado de nota y CRC32 del generador de Excel.
+      - name: Probar las fórmulas (promedio, nota requerida, CRC32)
+        run: node scripts/test-formulas.js
+
   # Restaura los iconos PNG de la PWA desde sus versiones base64 y los
   # confirma al repo si cambiaron. Los iconos son binarios y no viajan por
   # las herramientas de push de texto: se guardan como base64 (texto) y el

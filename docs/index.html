@@ -60,6 +60,15 @@ type Clase = {
   salon: string;
 };
 
+// Un evento importado de un calendario externo (ej: Google Calendar vía .ics)
+type Evento = {
+  id: string;
+  titulo: string;
+  fecha: string; // "YYYY-MM-DD"
+  hora?: string;  // "HH:MM" (opcional)
+  lugar?: string; // opcional
+};
+
 // Configuración global (tabla singleton, fila 0)
 type Config = {
   dark: boolean; // tema oscuro
@@ -91,6 +100,7 @@ const DB_SCHEMA = {
   materias: [] as Materia[],
   notas: [] as Nota[],
   clases: [] as Clase[],
+  eventos: [] as Evento[],
   config: [CONFIG_DEFAULT],
 };
 
@@ -459,6 +469,115 @@ function restaurarJSON(archivo: File) {
       window.dispatchEvent(new Event("db-undo"));
     } catch {
       alert("❌ El archivo no es un respaldo válido de Seguidor de Notas.");
+    }
+  };
+  reader.readAsText(archivo);
+}
+
+// ==================== ENTREGAS ↔ GOOGLE CALENDAR (.ics) ====================
+/**
+ * Exporta las entregas del semestre activo como archivo .ics estándar
+ * (un evento por cada nota con fecha). Al importarlo en Google Calendar,
+ * el celular notifica cada entrega sin necesidad de abrir la app.
+ * La conexión "en vivo" requeriría OAuth de Google Cloud; el .ics logra
+ * lo mismo sin claves y manteniendo los datos 100% privados.
+ */
+function exportarICS(data: any) {
+  const cfg: Config = data.config[0];
+  const activos = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === cfg.activo);
+  const idsAct = new Set(activos.map((m) => m.id));
+  const notas = (data.notas as Nota[]).filter((n) => n.fecha && idsAct.has(n.materiaId));
+  if (notas.length === 0) { alert("⚠️ No hay entregas con fecha en el semestre activo.\n\nAñade fechas en la pestaña Notas."); return; }
+  const escICS = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
+  const lineas = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Seguidor de Notas//Entregas//ES",
+    "CALSCALE:GREGORIAN",
+    "X-WR-CALNAME:Entregas " + escICS(cfg.activo),
+  ];
+  notas.forEach((n) => {
+    const nomMat = activos.find((m) => m.id === n.materiaId)?.nombre ?? "Entrega";
+    lineas.push("BEGIN:VEVENT");
+    lineas.push("UID:" + n.id + "@seguidor-notas");
+    lineas.push("DTSTAMP:20260101T000000Z");
+    lineas.push("DTSTART;VALUE=DATE:" + (n.fecha as string).replace(/-/g, ""));
+    lineas.push("SUMMARY:📋 " + escICS(nomMat + " — " + n.nombre));
+    lineas.push("END:VEVENT");
+  });
+  lineas.push("END:VCALENDAR");
+  const blob = new Blob([lineas.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "seguidor-notas-entregas.ics";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Parser mínimo de .ics: extrae los VEVENT con DTSTART, SUMMARY y LOCATION. */
+function parsearICS(texto: string): Evento[] {
+  const planas = texto.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  // Desplegar líneas continuadas (RFC 5545: la continuación empieza con espacio)
+  const lineas: string[] = [];
+  planas.forEach((ln) => {
+    if ((ln.startsWith(" ") || ln.startsWith("\t")) && lineas.length) lineas[lineas.length - 1] += ln.slice(1);
+    else lineas.push(ln);
+  });
+  const eventos: Evento[] = [];
+  let cur: any = null;
+  lineas.forEach((ln) => {
+    const i = ln.indexOf(":");
+    if (i < 0) return;
+    const clave = ln.slice(0, i).split(";")[0].trim().toUpperCase();
+    const valor = ln.slice(i + 1);
+    if (clave === "BEGIN" && valor.trim().toUpperCase() === "VEVENT") { cur = {}; return; }
+    if (clave === "END" && valor.trim().toUpperCase() === "VEVENT") {
+      if (cur && cur.fecha) {
+        eventos.push({ id: uid(), titulo: cur.titulo || "(sin título)", fecha: cur.fecha, hora: cur.hora, lugar: cur.lugar });
+      }
+      cur = null;
+      return;
+    }
+    if (!cur) return;
+    if (clave === "DTSTART") {
+      const m = valor.trim().match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2}))?/);
+      if (m) {
+        cur.fecha = m[1] + "-" + m[2] + "-" + m[3];
+        if (m[4]) cur.hora = m[4] + ":" + m[5];
+      }
+    } else if (clave === "SUMMARY") {
+      cur.titulo = valor.replace(/\\,/g, ",").replace(/\\n/gi, " ").trim();
+    } else if (clave === "LOCATION") {
+      cur.lugar = valor.trim();
+    }
+  });
+  return eventos;
+}
+
+/**
+ * Importa un .ics de Google Calendar (Configuración → Importar y exportar →
+ * Exportar) y muestra sus eventos en la pestaña Calendario junto a las
+ * entregas. Reimportar reemplaza los eventos importados anteriores.
+ */
+function importarICS(archivo: File) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const evs = parsearICS(String(reader.result));
+      if (evs.length === 0) { alert("❌ No se encontraron eventos con fecha en el archivo .ics."); return; }
+      const previos = MiniDB.find<Evento>("eventos").length;
+      if (!confirm(
+        "📅 ¿Importar " + evs.length + " evento(s) del calendario?\n\n" +
+        (previos > 0 ? "Se reemplazarán los " + previos + " evento(s) importados antes.\n" : "") +
+        "Los verás en la pestaña Calendario junto a tus entregas."
+      )) return;
+      setUndo("📅 Calendario importado"); // deshacible durante 5 segundos
+      MiniDB.removeWhere("eventos", () => true);
+      evs.forEach((e) => MiniDB.insert<Evento>("eventos", e));
+      window.dispatchEvent(new Event("db-undo"));
+    } catch {
+      alert("❌ No se pudo leer el archivo .ics.");
     }
   };
   reader.readAsText(archivo);
@@ -1381,6 +1500,15 @@ function TabCalendario({ data, t }: any) {
     }
   });
 
+  // Eventos importados de un calendario externo (Google Calendar vía .ics)
+  const evsPorDia: Record<number, Evento[]> = {};
+  (data.eventos as Evento[] || []).forEach((ev) => {
+    if (ev.fecha && ev.fecha.startsWith(`${anio}-${pad(mes + 1)}`)) {
+      const d = parseInt(ev.fecha.slice(8, 10), 10);
+      (evsPorDia[d] = evsPorDia[d] || []).push(ev);
+    }
+  });
+
   // Offset para que la semana empiece en lunes
   const primerDiaSemana = (new Date(anio, mes, 1).getDay() + 6) % 7;
   const diasDelMes = new Date(anio, mes + 1, 0).getDate();
@@ -1406,6 +1534,34 @@ function TabCalendario({ data, t }: any) {
         <Btn t={t} tone="soft" onClick={() => mover(-1)}>← Anterior</Btn>
         <h2 className={"text-lg font-bold " + t.text}>{MESES[mes]} {anio}</h2>
         <Btn t={t} tone="soft" onClick={() => mover(1)}>Siguiente →</Btn>
+      </div>
+
+      {/* Integración con Google Calendar (.ics) */}
+      <div className={cardBase + " " + t.card}>
+        <h2 className={"font-bold mb-1 " + t.text}>📅 Google Calendar</h2>
+        <p className={"text-xs mb-3 " + t.sub}>
+          📤 exporta tus entregas como archivo .ics (impórtalo en Google Calendar y tu celular te avisa de cada una) ·
+          📥 importa tu calendario de Google (Configuración → Importar y exportar → Exportar) para verlo aquí junto a tus entregas.
+        </p>
+        <div className="flex flex-wrap gap-2 items-center">
+          <Btn t={t} tone="soft" onClick={() => exportarICS(data)}>📤 Entregas → .ics</Btn>
+          <label className={"cursor-pointer rounded-lg px-3 py-2 text-sm font-medium transition " + t.softBtn}>
+            📥 Importar calendario (.ics)
+            <input type="file" accept=".ics,text/calendar" className="hidden"
+              onChange={(e) => {
+                const f = (e.target as HTMLInputElement).files?.[0];
+                e.target.value = "";
+                if (f) importarICS(f);
+              }} />
+          </label>
+          {((data.eventos as Evento[]) || []).length > 0 && (
+            <Btn t={t} tone="danger" onClick={() => {
+              setUndo("📅 Eventos importados eliminados");
+              MiniDB.removeWhere("eventos", () => true);
+              window.dispatchEvent(new Event("db-undo"));
+            }}>🗑️ Quitar importados ({(data.eventos as Evento[]).length})</Btn>
+          )}
+        </div>
       </div>
 
       {/* Encabezado de días de la semana */}
@@ -1441,6 +1597,13 @@ function TabCalendario({ data, t }: any) {
                     </div>
                   );
                 })}
+                {(evsPorDia[d] || []).map((ev) => (
+                  <div key={ev.id} title={ev.titulo + (ev.hora ? " · " + ev.hora : "") + (ev.lugar ? " · " + ev.lugar : "")}
+                    className="truncate rounded px-1 py-0.5"
+                    style={{ background: "rgba(99,102,241,0.25)", borderLeft: "2px solid #6366f1" }}>
+                    {ev.titulo.slice(0, 12)}
+                  </div>
+                ))}
               </div>
             </div>
           );
@@ -1448,7 +1611,7 @@ function TabCalendario({ data, t }: any) {
       </div>
 
       <p className={"text-xs text-center " + t.faint}>
-        Las celdas muestran las entregas de cada día, coloreadas por materia. Rojo = vencida, ámbar = vence en ≤3 días.
+        Las celdas muestran las entregas coloreadas por materia (rojo = vencida, ámbar = vence en ≤3 días) y en azul los eventos importados de Google Calendar.
       </p>
     </div>
   );
@@ -1518,6 +1681,20 @@ function TabDashboard({ data, refresh, t, goTab }: any) {
     .sort((a, b) => (a.fecha! < b.fecha! ? -1 : 1))
     .slice(0, 3);
 
+  // ---- ¿Qué sigue hoy?: clases del día (horario) + entregas que vencen hoy ----
+  const ahora = new Date();
+  const diaHoy = (ahora.getDay() + 6) % 7; // 0 = lunes
+  const idsHoy = new Set(mats.map((m) => m.id));
+  const minActual = ahora.getHours() * 60 + ahora.getMinutes();
+  const aMin = (h: string) => { const [H, M] = h.split(":").map(Number); return H * 60 + M; };
+  const clasesHoy = (data.clases as Clase[])
+    .filter((c) => idsHoy.has(c.materiaId) && c.dia === diaHoy)
+    .sort((a, b) => (a.inicio < b.inicio ? -1 : 1));
+  const claseAhora = clasesHoy.find((c) => minActual >= aMin(c.inicio) && minActual < aMin(c.fin));
+  const proximaClase = claseAhora || clasesHoy.find((c) => aMin(c.inicio) > minActual);
+  const entregasHoy = (data.notas as Nota[]).filter((n) => idsHoy.has(n.materiaId) && n.fecha && diasHasta(n.fecha) === 0);
+  const nomMat = (id: string) => mats.find((m) => m.id === id)?.nombre ?? "—";
+
   const stat = (label: string, value: string, sub: string, cls = "") => (
     <div className={"rounded-2xl border p-4 " + t.card}>
       <div className={"text-[10px] uppercase font-bold tracking-wide " + t.faint}>{label}</div>
@@ -1528,6 +1705,38 @@ function TabDashboard({ data, refresh, t, goTab }: any) {
 
   return (
     <div className="space-y-5">
+      {/* --- ¿Qué sigue hoy? --- */}
+      <Fade k="hoy">
+        <div className={cardBase + " " + t.card}>
+          <h2 className={"font-bold mb-3 " + t.text}>
+            📍 ¿Qué sigue hoy? <span className={"text-xs font-medium " + t.faint}>{DIAS[diaHoy]}</span>
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {claseAhora && (
+              <span className={"px-3 py-1.5 rounded-full text-sm font-semibold " + t.okBg}>
+                🔵 Ahora: {nomMat(claseAhora.materiaId)} hasta {claseAhora.fin}{claseAhora.salon ? " · " + claseAhora.salon : ""}
+              </span>
+            )}
+            {proximaClase && !claseAhora && (
+              <span className={"px-3 py-1.5 rounded-full text-sm font-semibold " + t.warnBg}>
+                ⏰ Siguiente: {nomMat(proximaClase.materiaId)} · {proximaClase.inicio}–{proximaClase.fin}{proximaClase.salon ? " · " + proximaClase.salon : ""}
+              </span>
+            )}
+            {entregasHoy.map((n) => (
+              <span key={n.id} className={"px-3 py-1.5 rounded-full text-sm font-semibold " + t.badBg}>
+                ⚠️ Entrega hoy: {n.nombre} ({nomMat(n.materiaId)})
+              </span>
+            ))}
+            {clasesHoy.length > 0 && !claseAhora && !proximaClase && (
+              <span className={"px-3 py-1.5 rounded-full text-sm " + t.okBg}>✅ Clases de hoy terminadas</span>
+            )}
+            {clasesHoy.length === 0 && entregasHoy.length === 0 && (
+              <span className={"px-3 py-1.5 rounded-full text-sm " + t.okBg}>🎉 Hoy no tienes clases ni entregas. ¡Descansa!</span>
+            )}
+          </div>
+        </div>
+      </Fade>
+
       {/* --- Tarjetas de estadísticas --- */}
       <Fade k="stats">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1541,6 +1750,39 @@ function TabDashboard({ data, refresh, t, goTab }: any) {
           {stat("En riesgo", String(enRiesgo.length),
             enRiesgo.length ? "necesitan atención" : "todo bajo control",
             enRiesgo.length ? "text-red-500" : "text-emerald-500")}
+        </div>
+      </Fade>
+
+      {/* --- Gráfico de barras: promedio por materia y % evaluado --- */}
+      <Fade k="grafica">
+        <div className={cardBase + " " + t.card}>
+          <h2 className={"font-bold mb-3 " + t.text}>📊 Promedio por materia</h2>
+          <div className="space-y-3">
+            {mats.map((m) => {
+              const ns = MiniDB.find<Nota>("notas", (n) => n.materiaId === m.id);
+              const p = promedio(ns, m.id);
+              const pesoEval = Math.min(100, ns.filter((n) => n.valor !== null).reduce((s, n) => s + n.porcentaje, 0));
+              const color = p === null ? "#64748b" : p < cfg.nota_minima ? "#ef4444" : p < cfg.nota_ok ? "#f59e0b" : "#10b981";
+              return (
+                <div key={m.id}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className={"font-medium truncate " + t.text}>{m.nombre}</span>
+                    <span className={"font-bold " + t.sub}>{p !== null ? p.toFixed(2) : "—"}</span>
+                  </div>
+                  <div className={"h-3 rounded-full overflow-hidden " + (cfg.dark ? "bg-slate-900" : "bg-slate-100")}>
+                    <div className="h-full rounded-full transition-all"
+                      style={{ width: (p !== null ? (p / 5) * 100 : 0) + "%", background: color }} />
+                  </div>
+                  <div className={"h-1.5 mt-1 rounded-full overflow-hidden " + (cfg.dark ? "bg-slate-900" : "bg-slate-100")}>
+                    <div className="h-full rounded-full bg-indigo-400/70" style={{ width: pesoEval + "%" }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className={"mt-3 text-[10px] " + t.faint}>
+            Barra gruesa: promedio (0–5; rojo/ámbar/verde según la nota mínima y la nota "ok"). Barra fina: % del peso ya evaluado.
+          </p>
         </div>
       </Fade>
 
