@@ -191,6 +191,10 @@ async function syncCloud(db: typeof DB_SCHEMA) {
       const rows = (db as any)[local] as Row[];
       const payload = rows.map((r) => cloudRow(local, r, uidUser));
       if (payload.length) await getSb().from(remote).upsert(payload);
+      const idsLocales = new Set(rows.map((r) => r.id));
+      const remotos = (await getSb().from(remote).select("id").eq("user_id", uidUser)).data || [];
+      const aBorrar = remotos.filter((r: any) => !idsLocales.has(r.id)).map((r: any) => r.id);
+      if (aBorrar.length) await getSb().from(remote).delete().in("id", aBorrar);
     }
   } catch {}
 }
@@ -209,14 +213,20 @@ async function syncConfigCloud(cfg: Config) {
       activo: cfg.activo,
       semestres: cfg.semestres,
     });
+    const idsSem = [];
     for (const nombre of cfg.semestres) {
+      const id = semestreId(uidUser, nombre);
+      idsSem.push(id);
       await getSb().from("semestres").upsert({
-        id: semestreId(uidUser, nombre),
+        id,
         user_id: uidUser,
         nombre,
         activo: nombre === cfg.activo,
       });
     }
+    const semsRemotos = (await getSb().from("semestres").select("id").eq("user_id", uidUser)).data || [];
+    const semsABorrar = semsRemotos.filter((s: any) => !idsSem.includes(s.id)).map((s: any) => s.id);
+    if (semsABorrar.length) await getSb().from("semestres").delete().in("id", semsABorrar);
   } catch {}
 }
 
