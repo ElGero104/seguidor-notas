@@ -1321,3 +1321,276 @@ function TabDashboard({ data, refresh, t, goTab }: any) {
       <Fade k="vacio">
         <div className={"rounded-3xl border-2 border-dashed p-10 text-center " + t.card}>
           <div className="text-5xl mb-3">🎓</div>
+          <h2 className={"text-xl font-bold " + t.text}>¡Bienvenido a Seguidor de Notas!</h2>
+          <p className={"text-sm mt-2 mb-5 " + t.sub}>
+            {cfg.activo
+              ? `Aún no hay materias en ${cfg.activo}: créalas en la pestaña Materias y aquí verás tu resumen.`
+              : "Crea tu primer semestre con la opción ➕ Añadir semestre… del encabezado, y luego añade tus materias."}
+          </p>
+          <Btn t={t} onClick={() => goTab("materias")}>➕ Empezar</Btn>
+        </div>
+      </Fade>
+    );
+  }
+
+  // Promedio general ponderado por créditos
+  let suma = 0, peso = 0;
+  mats.forEach((m) => {
+    const p = promedio(data.notas, m.id);
+    if (p !== null) { suma += p * m.creditos; peso += m.creditos; }
+  });
+  const promGeneral = peso ? suma / peso : null;
+
+  // % del semestre evaluado (promedio del peso calificado por materia)
+  const evaluadas = mats
+    .map((m) => MiniDB.find<Nota>("notas", (n) => n.materiaId === m.id))
+    .filter((ns) => ns.length > 0);
+  const pctEval = evaluadas.length
+    ? evaluadas.reduce(
+        (s, ns) => s + Math.min(100, ns.filter((n) => n.valor !== null).reduce((a, n) => a + n.porcentaje, 0)),
+        0
+      ) / evaluadas.length
+    : null;
+
+  // Riesgo por materia: margen = máximo alcanzable − nota mínima
+  const riesgos = mats
+    .map((m) => {
+      const ns = MiniDB.find<Nota>("notas", (n) => n.materiaId === m.id);
+      const c = calculo(ns, cfg.nota_minima);
+      return { m, c, margen: c.maximo - cfg.nota_minima };
+    })
+    .filter((r) => r.c.restante > 0)
+    .sort((a, b) => a.margen - b.margen);
+  const enRiesgo = riesgos.filter((r) => r.margen < 0.5);
+
+  // Próximas 3 entregas
+  const proximas = (data.notas as Nota[])
+    .filter((n) => n.fecha && diasHasta(n.fecha) !== null)
+    .sort((a, b) => (a.fecha! < b.fecha! ? -1 : 1))
+    .slice(0, 3);
+
+  const stat = (label: string, value: string, sub: string, cls = "") => (
+    <div className={"rounded-2xl border p-4 " + t.card}>
+      <div className={"text-[10px] uppercase font-bold tracking-wide " + t.faint}>{label}</div>
+      <div className={"text-2xl font-extrabold mt-1 " + cls}>{value}</div>
+      <div className={"text-xs mt-0.5 " + t.sub}>{sub}</div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-5">
+      {/* --- Tarjetas de estadísticas --- */}
+      <Fade k="stats">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {stat("Promedio general", promGeneral !== null ? promGeneral.toFixed(2) : "—",
+            promGeneral !== null ? "ponderado por créditos" : "aún sin notas",
+            promGeneral !== null ? estadoTxt(promGeneral, cfg, t) : t.text)}
+          {stat("Semestre evaluado", pctEval !== null ? pctEval.toFixed(0) + "%" : "—",
+            pctEval !== null ? "del peso definido" : "define tus notas", "text-indigo-500")}
+          {stat("Materias activas", String(mats.length),
+            mats.reduce((s, m) => s + m.creditos, 0) + " créditos", "text-violet-500")}
+          {stat("En riesgo", String(enRiesgo.length),
+            enRiesgo.length ? "necesitan atención" : "todo bajo control",
+            enRiesgo.length ? "text-red-500" : "text-emerald-500")}
+        </div>
+      </Fade>
+
+      {/* --- Próximas entregas + materias que requieren atención --- */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Fade k="prox" className="">
+          <div className={cardBase + " " + t.card}>
+            <h2 className={"font-bold mb-3 " + t.text}>⏳ Próximas entregas</h2>
+            {proximas.length === 0 ? (
+              <p className={"text-sm " + t.faint}>Sin fechas registradas. Añádelas en la pestaña Notas.</p>
+            ) : (
+              <div className="space-y-2">
+                {proximas.map((n) => {
+                  const m = mats.find((x) => x.id === n.materiaId);
+                  return (
+                    <div key={n.id} className={"flex items-center gap-2 text-sm " + t.sub}>
+                      <span className="font-medium" style={{ color: m?.color }}>{m?.nombre ?? "—"}</span>
+                      <span className="truncate">· {n.nombre}</span>
+                      <span className="ml-auto"><FechaBadge fecha={n.fecha} t={t} /></span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <Btn t={t} tone="soft" className="mt-3 w-full" onClick={() => goTab("calendario")}>📅 Ver calendario completo</Btn>
+          </div>
+        </Fade>
+
+        <Fade k="riesgo" className="">
+          <div className={cardBase + " " + t.card}>
+            <h2 className={"font-bold mb-3 " + t.text}>🚨 Requieren atención</h2>
+            {riesgos.length === 0 ? (
+              <p className={"text-sm " + t.faint}>Nada pendiente: todo tu peso está calificado. 🎉</p>
+            ) : (
+              <div className="space-y-2">
+                {riesgos.slice(0, 4).map((r) => (
+                  <div key={r.m.id} className={"flex items-center gap-2 text-sm " + t.sub}>
+                    <span className="font-medium" style={{ color: r.m.color }}>{r.m.nombre}</span>
+                    <span className="ml-auto">
+                      {r.margen < 0 ? (
+                        <span className="text-red-500 font-semibold">🔴 imposible ganarla</span>
+                      ) : r.margen < 0.5 ? (
+                        <span className="text-amber-500 font-semibold">🟠 margen {r.margen.toFixed(2)}</span>
+                      ) : (
+                        <span className={t.ok + " font-semibold"}>🟢 margen {r.margen.toFixed(2)}</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Btn t={t} tone="soft" className="mt-3 w-full" onClick={() => goTab("simulador")}>🎯 Ver simulador completo</Btn>
+          </div>
+        </Fade>
+      </div>
+    </div>
+  );
+}
+
+// ==================== APP PRINCIPAL ====================
+
+/**
+ * Componente raíz: encabezado hero con degradado y estadísticas, pestañas
+ * (superior en escritorio, inferior fija en móvil) y animación por pestaña.
+ */
+export default function App() {
+  const { data, refresh } = useDB();
+  const [tab, setTab] = useState<"inicio" | "materias" | "notas" | "simulador" | "horarios" | "calendario">("inicio");
+
+  const cfg: Config = data.config[0];
+  const t = tokens(!!cfg.dark);
+
+  const toggleDark = () => { MiniDB.saveConfig({ dark: !cfg.dark }); refresh(); };
+
+  const tabs = [
+    { id: "inicio", icon: "🏠", label: "Inicio" },
+    { id: "materias", icon: "📚", label: "Materias" },
+    { id: "notas", icon: "📝", label: "Notas" },
+    { id: "simulador", icon: "🎯", label: "Simulador" },
+    { id: "horarios", icon: "🗓️", label: "Horarios" },
+    { id: "calendario", icon: "📅", label: "Calendario" },
+  ] as const;
+
+  // Semestres registrados + selector del semestre activo (único visible)
+  const semestres: string[] = cfg.semestres || [];
+  const cambiarSemestre = (val: string) => {
+    if (val === "__nuevo") {
+      const nombre = prompt("📝 Nombre del nuevo semestre (ej: 2027-1):", "");
+      if (nombre && nombre.trim()) {
+        const n = nombre.trim();
+        MiniDB.saveConfig({
+          semestres: semestres.includes(n) ? semestres : [...semestres, n],
+          activo: n,
+        });
+        refresh();
+      }
+      return;
+    }
+    MiniDB.saveConfig({ activo: val });
+    refresh();
+  };
+
+  // Estadísticas del encabezado: solo el semestre activo
+  const mats = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === cfg.activo);
+  let suma = 0, peso = 0;
+  mats.forEach((m) => {
+    const p = promedio(data.notas, m.id);
+    if (p !== null) { suma += p * m.creditos; peso += m.creditos; }
+  });
+  const promGeneral = peso ? suma / peso : null;
+
+  return (
+    <div className={"min-h-screen " + t.page + " transition-colors"}>
+      <div className="max-w-4xl mx-auto p-4 sm:p-8 pb-24 md:pb-8">
+        {/* --- Encabezado hero con degradado --- */}
+        <header className={"relative overflow-hidden rounded-3xl mb-6 p-6 sm:p-8 text-white shadow-lg bg-gradient-to-br " + t.hero}>
+          <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/10 pointer-events-none" />
+          <div className="absolute -bottom-16 -left-8 w-48 h-48 rounded-full bg-black/10 pointer-events-none" />
+          <div className="relative flex items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold">🎓 Seguidor de Notas</h1>
+              <p className="text-sm text-white/80">Tu semestre de un vistazo: notas, simulador, horarios y calendario.</p>
+            </div>
+            <button onClick={toggleDark}
+              className="text-2xl rounded-xl px-3 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
+              title={cfg.dark ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}>
+              {cfg.dark ? "☀️" : "🌙"}
+            </button>
+          </div>
+          <div className="relative grid grid-cols-3 gap-3 mt-6">
+            <div className={"rounded-2xl p-3 " + t.heroCard}>
+              <div className="text-[10px] uppercase font-bold text-white/70">Promedio</div>
+              <div className="text-2xl font-extrabold">{promGeneral !== null ? promGeneral.toFixed(2) : "—"}</div>
+            </div>
+            <div className={"rounded-2xl p-3 " + t.heroCard}>
+              <div className="text-[10px] uppercase font-bold text-white/70">Materias</div>
+              <div className="text-2xl font-extrabold">{mats.length}</div>
+            </div>
+            <div className={"rounded-2xl p-3 " + t.heroCard}>
+              <div className="text-[10px] uppercase font-bold text-white/70">Créditos</div>
+              <div className="text-2xl font-extrabold">{mats.reduce((s, m) => s + m.creditos, 0)}</div>
+            </div>
+          </div>
+          {/* --- Selector de semestre activo --- */}
+          <div className="relative flex flex-wrap items-center gap-2 mt-4">
+            <span className="text-[10px] uppercase font-bold text-white/70">Semestre activo</span>
+            <select value={cfg.activo} onChange={(e) => cambiarSemestre(e.target.value)}
+              className="rounded-xl px-3 py-1.5 text-sm font-semibold bg-white/15 border border-white/25 text-white backdrop-blur focus:outline-none">
+              {semestres.length === 0 && <option value="">— sin semestres —</option>}
+              {semestres.map((s) => (
+                <option key={s} value={s} className="text-slate-800">
+                  {s + ((cfg.archivados || []).includes(s) ? " (archivado)" : "")}
+                </option>
+              ))}
+              <option value="__nuevo" className="text-slate-800">➕ Añadir semestre…</option>
+            </select>
+          </div>
+        </header>
+
+        {/* --- Navegación superior (solo escritorio) --- */}
+        <nav className={"hidden md:flex flex-wrap gap-2 mb-6 rounded-xl p-1.5 border shadow-sm w-fit mx-auto " + t.nav}>
+          {tabs.map((x) => (
+            <button key={x.id} onClick={() => setTab(x.id)}
+              className={"px-4 py-2 rounded-lg text-sm font-semibold transition " +
+                (tab === x.id ? "bg-indigo-600 text-white shadow" : t.navIn)}>
+              {x.icon} {x.label}
+            </button>
+          ))}
+        </nav>
+
+        {/* Animación de entrada al cambiar de pestaña */}
+        <Fade k={tab}>
+          {tab === "inicio" && <TabDashboard data={data} refresh={refresh} t={t} goTab={setTab} />}
+          {tab === "materias" && <TabMaterias data={data} refresh={refresh} t={t} />}
+          {tab === "notas" && <TabNotas data={data} refresh={refresh} t={t} />}
+          {tab === "simulador" && <TabSimulador data={data} refresh={refresh} t={t} />}
+          {tab === "horarios" && <TabHorarios data={data} refresh={refresh} t={t} />}
+          {tab === "calendario" && <TabCalendario data={data} t={t} />}
+        </Fade>
+
+        <footer className={"mt-8 text-center text-xs " + t.faint}>
+          🗄️ Tus datos se guardan en la base de datos local de este navegador.
+        </footer>
+      </div>
+
+      {/* --- Navegación inferior fija (solo móvil) --- */}
+      <nav className={"fixed bottom-0 inset-x-0 z-50 md:hidden border-t backdrop-blur " + t.navMob}
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div className="grid grid-cols-6 max-w-4xl mx-auto">
+          {tabs.map((x) => (
+            <button key={x.id} onClick={() => setTab(x.id)}
+              className={"flex flex-col items-center gap-0.5 py-2 text-[10px] font-semibold transition " +
+                (tab === x.id ? "text-indigo-500" : t.sub)}>
+              <span className="text-xl leading-none">{x.icon}</span>
+              {x.label}
+            </button>
+          ))}
+        </div>
+      </nav>
+    </div>
+  );
+}
