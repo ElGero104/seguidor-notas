@@ -212,8 +212,12 @@ async function pullCloud() {
   } catch {}
 }
 
-// Generador de ids pseudoaleatorios
-const uid = () => Math.random().toString(36).slice(2, 10);
+// Generador de ids (UUID v4, compatible con las columnas uuid de Supabase)
+const uid = () =>
+  (crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  }));
 
 // ==================== CÁLCULOS ACADÉMICOS ====================
 
