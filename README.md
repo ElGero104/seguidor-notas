@@ -4,25 +4,25 @@ Mini app de React para el seguimiento académico universitario.
 
 ## Características
 
-- **📚 Materias**: crea materias con profesor, créditos y **semestre** (agrupación por semestres). Eliminación en cascada de notas y clases.
-- **📝 Notas**: configura la estructura de evaluación de cada materia (cantidad de notas y peso de cada una, generando pesos iguales que suman 100%). Edición inline de nombre, peso y valor (0–5). Promedios ponderados con alerta de umbral.
-- **🗓️ Horarios**: clases por día, hora y salón, organizadas en un horario semanal visual.
-- **🗄️ MiniDB**: capa de base de datos embebida (API CRUD: `insert`, `find`, `update`, `remove`, `removeWhere`) con persistencia automática en `localStorage`. Diseñada para poder intercambiarse por un backend real (Firebase/Supabase/REST) sin cambiar la UI.
+- **📚 Materias**: crea materias con profesor, créditos y **semestre**. Búsqueda por nombre/profesor/semestre. Eliminación en cascada de notas y clases.
+- **📁 Carpetas por semestre**: las materias se agrupan en carpetas plegables, cada una con su **promedio ponderado por semestre** (por créditos).
+- **📝 Notas**: estructura de evaluación por materia (cantidad de notas y pesos iguales que suman 100%). Edición inline de nombre, peso, valor (0–5) y **fecha de entrega**, con badges de vencimiento (venció / vence hoy / en X días).
+- **🎯 Simulador**: define tu nota objetivo por materia y calcula qué necesitas en el % restante por evaluar; avisa si el objetivo ya está asegurado o es matemáticamente imposible (muestra el máximo alcanzable).
+- **🌙 Tema oscuro**: conmutable y persistente.
+- **🗓️ Horarios**: clases por día, hora y salón en un horario semanal visual.
+- **🗄️ MiniDB**: capa de base de datos embebida (CRUD: `insert`, `find`, `update`, `remove`, `removeWhere`) con persistencia automática en `localStorage`, intercambiable por un backend real.
+
+## Demo en vivo
+
+[elgero104.github.io/seguidor-notas](https://elgero104.github.io/seguidor-notas/)
 
 ## Stack
 
-- React + TypeScript
-- Tailwind CSS (clases utilitarias)
-- `nucleo-sharp` (íconos)
+- React 18 + TypeScript
+- Tailwind CSS
 - `localStorage` como motor de persistencia
 
-> Nota: `src/App.tsx` fue desarrollado para el runtime de Canvas de Vibe (que provee Tailwind y `nucleo-sharp` en tiempo de build). Para ejecutarlo de forma independiente, crea un proyecto Vite + React + TS, instala `tailwindcss` y `nucleo-sharp`, y copia `src/App.tsx`.
-
-## Uso
-
-1. Crea tus materias indicando el semestre.
-2. En la pestaña Notas, define la estructura de evaluación (cantidad y pesos).
-3. Registra las calificaciones y sigue tus promedios ponderados en tiempo real.
+> `src/App.tsx` es la fuente canónica. `docs/index.html` es la versión standalone para GitHub Pages (React/Babel/Tailwind por CDN).
 
 ---
 
