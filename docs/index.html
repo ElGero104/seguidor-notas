@@ -1751,6 +1751,23 @@ function TabSimulador({ data, refresh, t }: any) {
 
 // ==================== PESTAÑA HORARIOS ====================
 
+/** Extrae el meeting id y password de un link de Zoom. */
+function zoomParts(url: string) {
+  const m = url.match(/zoom\.us\/(?:j|my)\/(\d+)(?:[?&]pwd=([A-Za-z0-9]+))?/i);
+  if (!m) return null;
+  return { id: m[1], pwd: m[2] || "" };
+}
+
+/** Abre Zoom: primero intenta la app instalada (zoommtg://), si no, la web. */
+function abrirZoom(url: string) {
+  const p = zoomParts(url);
+  const link = p
+    ? `zoommtg://zoom.us/join?confno=${p.id}${p.pwd ? "&pwd=" + p.pwd : ""}`
+    : url;
+  const w = window.open(link, "_blank");
+  if (!w || w.closed) window.location.href = url;
+}
+
 /** Horario semanal: alta de clases y cuadrícula por día. */
 function TabHorarios({ data, refresh, t }: any) {
   const [f, setF] = useState({ materiaId: "", dia: 0, inicio: "07:00", fin: "09:00", salon: "" });
@@ -1806,13 +1823,23 @@ function TabHorarios({ data, refresh, t }: any) {
               <div className="space-y-2">
                 {cs.map((c) => {
                   const color = (data.materias as Materia[]).find((m) => m.id === c.materiaId)?.color ?? "#64748b";
+                  const zoom = (data.recursos as Recurso[]).find((r) => r.materiaId === c.materiaId && r.tipo === "zoom" && r.url);
                   return (
                     <div key={c.id} className={"rounded-lg border p-2 text-xs shadow-sm group " + t.groupCard}
                       style={{ borderLeft: `4px solid ${color}` }}>
                       <div className={"font-semibold " + t.text}>{nombre(c.materiaId)}</div>
                       <div className={t.sub}>{c.inicio} – {c.fin}{c.salon ? ` · ${c.salon}` : ""}</div>
-                      <button className="text-red-400 opacity-0 group-hover:opacity-100 transition"
-                        onClick={() => del(c.id)}>Eliminar</button>
+                      <div className="flex items-center gap-2 mt-1">
+                        {zoom && (
+                          <button onClick={() => abrirZoom(zoom.url)}
+                            className="text-indigo-500 hover:text-indigo-400 font-semibold"
+                            title={`Abrir en la app de Zoom: ${zoom.titulo}`}>
+                            🎥 Unirse
+                          </button>
+                        )}
+                        <button className="text-red-400 opacity-0 group-hover:opacity-100 transition"
+                          onClick={() => del(c.id)}>Eliminar</button>
+                      </div>
                     </div>
                   );
                 })}
