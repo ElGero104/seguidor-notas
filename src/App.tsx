@@ -77,6 +77,7 @@ type Config = {
   archivados: string[]; // semestres archivados
   activo: string; // semestre activo (el único que se muestra)
   semestres: string[]; // lista de semestres registrados
+  fechasSemestre: Record<string, { inicio: string; fin: string }>; // rango de fechas por semestre
 };
 
 // Paleta de colores cíclica por materia
@@ -94,7 +95,7 @@ const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "
  */
 const DB_KEY = "seguidor-notas-db";
 
-const CONFIG_DEFAULT: Config = { dark: false, nota_minima: 3.0, nota_ok: 4.0, archivados: [], activo: "", semestres: [] };
+const CONFIG_DEFAULT: Config = { dark: false, nota_minima: 3.0, nota_ok: 4.0, archivados: [], activo: "", semestres: [], fechasSemestre: {} };
 
 const DB_SCHEMA = {
   materias: [] as Materia[],
@@ -224,6 +225,7 @@ async function syncConfigCloud(cfg: Config) {
       archivados: cfg.archivados,
       activo: cfg.activo,
       semestres: cfg.semestres,
+      fechas_semestre: cfg.fechasSemestre || {},
     });
     const idsSem = [];
     for (const nombre of cfg.semestres) {
@@ -277,6 +279,7 @@ async function pullCloud() {
         archivados: cfgRow[0].archivados || [],
         activo: cfgRow[0].activo || db.config[0].activo,
         semestres: cfgRow[0].semestres?.length ? cfgRow[0].semestres : db.config[0].semestres,
+        fechasSemestre: cfgRow[0].fechas_semestre || {},
       };
     }
     (db.materias as Materia[]) = mats.map((m: any) => ({ id: m.id, nombre: m.nombre, profesor: m.profesor ?? "", creditos: m.creditos ?? 0, color: m.color ?? COLORS[0], semestre: m.semestre_nombre ?? "Sin semestre" }));
@@ -331,6 +334,11 @@ function calculo(notas: Nota[], objetivo: number) {
   const requerida = restante > 0 ? (objetivo * 100 - acumulado) / restante : null;
   const maximo = restante > 0 ? (acumulado + 5 * restante) / 100 : acumulado / 100;
   return { acumulado, pesoEval, restante, requerida, maximo };
+}
+
+/** Días que tiene un mes (0-11) en un año. */
+function diasMes(anio: number, mes: number): number {
+  return new Date(anio, mes + 1, 0).getDate();
 }
 
 /** Días hasta una fecha "YYYY-MM-DD" (negativo = venció). null si no hay fecha. */
@@ -1225,6 +1233,19 @@ function TabMaterias({ data, refresh, t }: any) {
               Prom. semestre: {psem.toFixed(2)}
             </span>
           )}
+          <button onClick={() => {
+            const act = cfg.fechasSemestre?.[activo] || { inicio: "", fin: "" };
+            const ini = prompt("📅 Fecha de inicio del semestre (AAAA-MM-DD):", act.inicio);
+            if (ini === null) return;
+            const fin = prompt("📅 Fecha de fin del semestre (AAAA-MM-DD):", act.fin);
+            if (fin === null) return;
+            const v = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s.trim()) ? s.trim() : "";
+            MiniDB.saveConfig({ fechasSemestre: { ...(cfg.fechasSemestre || {}), [activo]: { inicio: v(ini), fin: v(fin) } } });
+            refresh();
+          }} className={t.faint + " hover:text-indigo-400 text-sm"}
+            title="Editar fechas de inicio y fin del semestre (las clases del calendario solo se muestran dentro de este rango)">
+            📅 Fechas
+          </button>
           <button onClick={toggleArchivo} className={t.faint + " hover:text-indigo-400 text-sm"}
             title={archivado ? "Restaurar semestre" : "Archivar semestre"}>
             {archivado ? "📂 Restaurar" : "🗄️ Archivar semestre"}
@@ -1865,9 +1886,25 @@ function TabCalendario({ data, t }: any) {
     }
   });
 
+  // Clases recurrentes del semestre activo dentro de su rango de fechas:
+  // una clase con dia=0 (Lunes) aparece todos los lunes entre inicio y fin.
+  const cfg: Config = data.config[0];
+  const rango = (cfg.fechasSemestre || {})[cfg.activo] || { inicio: "", fin: "" };
+  const clasesPorDia: Record<number, Clase[]> = {};
+  (data.clases as Clase[]).forEach((c) => {
+    if (!idsAct.has(c.materiaId)) return;
+    for (let d = 1; d <= diasMes(anio, mes); d++) {
+      const f = fechaDe(d);
+      if (rango.inicio && f < rango.inicio) continue;
+      if (rango.fin && f > rango.fin) continue;
+      const diaSem = (new Date(anio, mes, d).getDay() + 6) % 7; // 0 = Lunes
+      if (diaSem === c.dia) (clasesPorDia[d] = clasesPorDia[d] || []).push(c);
+    }
+  });
+
   // Offset para que la semana empiece en lunes
   const primerDiaSemana = (new Date(anio, mes, 1).getDay() + 6) % 7;
-  const diasDelMes = new Date(anio, mes + 1, 0).getDate();
+  const diasDelMes = diasMes(anio, mes);
   const celdas: (number | null)[] = [];
   for (let i = 0; i < primerDiaSemana; i++) celdas.push(null);
   for (let d = 1; d <= diasDelMes; d++) celdas.push(d);
@@ -1953,6 +1990,22 @@ function TabCalendario({ data, t }: any) {
                     </div>
                   );
                 })}
+                {(clasesPorDia[d] || []).map((c) => {
+                  const m = (data.materias as Materia[]).find((x) => x.id === c.materiaId);
+                  const zoom = (data.recursos as Recurso[]).find((r) =>
+                    r.materiaId === c.materiaId && r.url && /zoom\.us\//i.test(r.url));
+                  return (
+                    <div key={c.id} title={`${m?.nombre ?? ""} · ${c.inicio}–${c.fin}${c.salon ? " · " + c.salon : ""}`}
+                      className="truncate rounded px-1 py-0.5 flex items-center gap-1"
+                      style={{ background: (m?.color ?? "#64748b") + "22", borderLeft: `2px solid ${m?.color ?? "#64748b"}` }}>
+                      <span className="truncate">🕒 {m?.nombre.slice(0, 8) ?? "—"} {c.inicio}</span>
+                      {zoom && (
+                        <button onClick={() => abrirZoom(zoom.url)} title={`Abrir Zoom en la app: ${zoom.titulo}`}
+                          className="ml-auto text-indigo-500 hover:text-indigo-300 font-bold">🎥</button>
+                      )}
+                    </div>
+                  );
+                })}
                 {(evsPorDia[d] || []).map((ev) => (
                   <div key={ev.id} title={ev.titulo + (ev.hora ? " · " + ev.hora : "") + (ev.lugar ? " · " + ev.lugar : "")}
                     className="truncate rounded px-1 py-0.5"
@@ -1967,7 +2020,7 @@ function TabCalendario({ data, t }: any) {
       </div>
 
       <p className={"text-xs text-center " + t.faint}>
-        Las celdas muestran las entregas coloreadas por materia (rojo = vencida, ámbar = vence en ≤3 días) y en azul los eventos importados de Google Calendar.
+        Las celdas muestran las entregas coloreadas por materia (rojo = vencida, ámbar = vence en ≤3 días), las clases del semestre activo con 🕒 (🎥 abre Zoom) y en azul los eventos importados de Google Calendar.
       </p>
     </div>
   );
@@ -2331,9 +2384,17 @@ export default function App() {
       const nombre = prompt("📝 Nombre del nuevo semestre (ej: 2027-1):", "");
       if (nombre && nombre.trim()) {
         const n = nombre.trim();
+        const inicio = prompt("📅 Fecha de inicio del semestre (AAAA-MM-DD):", "");
+        const fin = prompt("📅 Fecha de fin del semestre (AAAA-MM-DD):", "");
+        const valFechas = (s: string | null) =>
+          s && /^\d{4}-\d{2}-\d{2}$/.test(s.trim()) ? s.trim() : "";
         MiniDB.saveConfig({
           semestres: semestres.includes(n) ? semestres : [...semestres, n],
           activo: n,
+          fechasSemestre: {
+            ...(cfg.fechasSemestre || {}),
+            [n]: { inicio: valFechas(inicio), fin: valFechas(fin) },
+          },
         });
         refresh();
       }
