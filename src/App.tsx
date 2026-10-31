@@ -9,6 +9,47 @@ const SUPABASE_URL = "https://iqkkxtiuvkaecncdutpt.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlxa2t4dGl1dmthZWNuY2R1dHB0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzODg2MTMsImV4cCI6MjEwODk2NDYxM30.cpXdGxbz0ZwjsWGc0hB5__UzLb8S3cuPP5yVtL0i35o";
 const EMAIL_DOMAIN = "@udea.edu.co";
+const VAPID_PUBLIC_KEY = "BJzrD3FCbBSeZRW7bjm_fxjljBC5w9akCfJptw175P9ELsZt8XNPatqqU-3TGtceBZEmnIal--0MLr_PaRHDzvc";
+
+async function urlBase64ToUint8Array(base64: string): Promise<Uint8Array> {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+async function subscribeToPush(): Promise<boolean> {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") return false;
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: await urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as any,
+  });
+  const json: any = sub.toJSON();
+  const { data: s } = await getSb().auth.getSession();
+  const uidUser = s?.session?.user?.id;
+  if (!uidUser) return false;
+  await getSb().from("push_subscriptions").upsert({
+    user_id: uidUser,
+    endpoint: json.endpoint,
+    keys: json.keys,
+  }, { onConflict: "endpoint" });
+  return true;
+}
+
+async function unsubscribeFromPush(): Promise<void> {
+  if (!("serviceWorker" in navigator)) return;
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (sub) {
+    await getSb().from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+    await sub.unsubscribe();
+  }
+}
 const sb = () =>
   (typeof supabase !== "undefined" ? supabase : (window as any).supabase).createClient(
     SUPABASE_URL,
@@ -2426,6 +2467,17 @@ export default function App() {
 
   const toggleDark = () => { MiniDB.saveConfig({ dark: !cfg.dark }); refresh(); };
 
+  const [pushOn, setPushOn] = useState(false);
+  useEffect(() => {
+    if ("serviceWorker" in navigator && "PushManager" in window) {
+      navigator.serviceWorker.ready.then((reg) => reg.pushManager.getSubscription()).then((s) => setPushOn(!!s));
+    }
+  }, []);
+  const togglePush = async () => {
+    const ok = pushOn ? (await unsubscribeFromPush(), false) : await subscribeToPush();
+    setPushOn(ok);
+  };
+
   const tabs = [
     { id: "inicio", icon: "🏠", label: "Inicio" },
     { id: "materias", icon: "📚", label: "Materias" },
@@ -2505,6 +2557,11 @@ export default function App() {
                     if (f) restaurarJSON(f);
                   }} />
               </label>
+              <button onClick={togglePush}
+                className="text-xl rounded-xl px-3 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
+                title={pushOn ? "Desactivar notificaciones push" : "Activar notificaciones push (aviso 1 día antes de cada entrega)"}>
+                {pushOn ? "🔔" : "🔕"}
+              </button>
               <button onClick={() => getSb().auth.signOut()}
                 className="text-xl rounded-xl px-3 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
                 title="Cerrar sesión">

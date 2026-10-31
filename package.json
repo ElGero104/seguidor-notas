@@ -13,7 +13,8 @@
     "@supabase/supabase-js": "^2.118.0",
     "nucleo-sharp": "^1.0.0",
     "react": "^18.3.0",
-    "react-dom": "^18.3.0"
+    "react-dom": "^18.3.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/react": "^18.3.0",

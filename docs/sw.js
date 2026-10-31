@@ -6,7 +6,7 @@
  *    última versión publicada, y funciona sin internet.
  *  - CDNs e iconos: caché primero + actualización en segundo plano.
  */
-var CACHE = "seguidor-notas-v1";
+var CACHE = "seguidor-notas-v2";
 var PRECACHE = [
   "./",
   "./index.html",
@@ -71,6 +71,35 @@ self.addEventListener("fetch", function (e) {
         })
         .catch(function () { return m; });
       return m || net;
+    })
+  );
+});
+
+// Notificaciones push del servidor (aviso 1 día antes de entregas)
+self.addEventListener("push", function (e) {
+  var data = {};
+  try { data = e.data ? e.data.json() : {}; } catch (_) {}
+  e.waitUntil(
+    self.registration.showNotification(data.title || "Seguidor de Notas", {
+      body: data.body || "",
+      icon: "./icons/icon-192.png",
+      badge: "./icons/icon-192.png",
+      tag: "deadline",
+      data: { url: data.url || "./" }
+    })
+  );
+});
+
+self.addEventListener("notificationclick", function (e) {
+  e.notification.close();
+  var url = (e.notification.data && e.notification.data.url) || "./";
+  e.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (lista) {
+      for (var i = 0; i < lista.length; i++) {
+        var c = lista[i];
+        if ("focus" in c) return c.focus();
+      }
+      if (clients.openWindow) return clients.openWindow(url);
     })
   );
 });
