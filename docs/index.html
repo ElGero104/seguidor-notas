@@ -1884,6 +1884,7 @@ function TabCalendario({ data, t }: any) {
   const hoy = new Date();
   const [mes, setMes] = useState(hoy.getMonth());
   const [anio, setAnio] = useState(hoy.getFullYear());
+  const [diaSel, setDiaSel] = useState<number | null>(null);
 
   const pad = (n: number) => String(n).padStart(2, "0");
   const fechaDe = (d: number) => `${anio}-${pad(mes + 1)}-${pad(d)}`;
@@ -1995,8 +1996,8 @@ function TabCalendario({ data, t }: any) {
           const evs = porDia[d] || [];
           const dd = diasHasta(fechaDe(d));
           return (
-            <div key={d}
-              className={"min-h-20 rounded-lg border p-1 text-xs " + t.group + (esHoy(d) ? " " + t.ring : "")}>
+            <div key={d} onClick={() => setDiaSel(d)}
+              className={"min-h-20 rounded-lg border p-1 text-xs cursor-pointer hover:shadow-md transition " + t.group + (esHoy(d) ? " " + t.ring : "")}>
               <div className={"font-bold mb-1 " + (esHoy(d) ? "text-indigo-500" : t.sub)}>{d}</div>
               <div className="space-y-1">
                 {evs.map((n) => {
@@ -2046,8 +2047,67 @@ function TabCalendario({ data, t }: any) {
       </div>
 
       <p className={"text-xs text-center " + t.faint}>
-        Las celdas muestran las entregas coloreadas por materia (rojo = vencida, ámbar = vence en ≤3 días), las clases del semestre activo con 🕒 (🎥 abre Zoom) y en azul los eventos importados de Google Calendar.
+        Las celdas muestran las entregas coloreadas por materia (rojo = vencida, ámbar = vence en ≤3 días), las clases del semestre activo con 🕒 (🎥 abre Zoom) y en azul los eventos importados de Google Calendar. Toca un día para ver sus clases.
       </p>
+
+      {/* Detalle del día seleccionado: clases completas con botón de unirse */}
+      {diaSel !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setDiaSel(null)}>
+          <div className={cardBase + " " + t.card + " w-full max-w-md max-h-[80vh] overflow-auto"} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className={"text-lg font-bold " + t.text}>
+                🗓️ {fechaDe(diaSel)} ({DIAS[(new Date(anio, mes, diaSel).getDay() + 6) % 7]})
+              </h2>
+              <button onClick={() => setDiaSel(null)} className={"text-xl " + t.faint}>✕</button>
+            </div>
+            {(clasesPorDia[diaSel] || []).length === 0 && (
+              <p className={"text-sm " + t.faint}>Sin clases este día.</p>
+            )}
+            <div className="space-y-2">
+              {(clasesPorDia[diaSel] || [])
+                .sort((a, b) => a.inicio.localeCompare(b.inicio))
+                .map((c) => {
+                  const m = (data.materias as Materia[]).find((x) => x.id === c.materiaId);
+                  const zoom = (data.recursos as Recurso[]).find((r) =>
+                    r.materiaId === c.materiaId && r.url && /zoom\.us\//i.test(r.url));
+                  return (
+                    <div key={c.id} className={"rounded-xl border p-3 " + t.groupCard}
+                      style={{ borderLeft: `4px solid ${m?.color ?? "#64748b"}` }}>
+                      <div className={"font-bold " + t.text}>{m?.nombre ?? "—"}</div>
+                      <div className={"text-sm " + t.sub}>
+                        🕒 {c.inicio} – {c.fin}{c.salon ? ` · 🚪 ${c.salon}` : ""}
+                      </div>
+                      {zoom ? (
+                        <Btn t={t} className="mt-2 w-full" onClick={() => abrirZoom(zoom.url)}>
+                          🎥 Unirse a Zoom ({zoom.titulo})
+                        </Btn>
+                      ) : (
+                        <div className={"text-xs mt-2 " + t.faint}>Sin enlace de Zoom para esta materia (añádelo en Recursos).</div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+            {(porDia[diaSel] || []).length > 0 && (
+              <div className="mt-4">
+                <h3 className={"font-bold text-sm mb-1 " + t.text}>📌 Entregas</h3>
+                <div className="space-y-1">
+                  {(porDia[diaSel] || []).map((n) => {
+                    const m = (data.materias as Materia[]).find((x) => x.id === n.materiaId);
+                    return (
+                      <div key={n.id} className={"flex items-center gap-2 text-sm " + t.sub}>
+                        <span className="font-medium" style={{ color: m?.color }}>{m?.nombre ?? "—"}</span>
+                        <span>· {n.nombre}</span>
+                        <span className="ml-auto"><FechaBadge fecha={n.fecha} t={t} /></span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
