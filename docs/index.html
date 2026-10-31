@@ -1823,7 +1823,8 @@ function TabHorarios({ data, refresh, t }: any) {
               <div className="space-y-2">
                 {cs.map((c) => {
                   const color = (data.materias as Materia[]).find((m) => m.id === c.materiaId)?.color ?? "#64748b";
-                  const zoom = (data.recursos as Recurso[]).find((r) => r.materiaId === c.materiaId && r.tipo === "zoom" && r.url);
+                  const zoom = (data.recursos as Recurso[]).find((r) =>
+                    r.materiaId === c.materiaId && r.url && /zoom\.us\//i.test(r.url));
                   return (
                     <div key={c.id} className={"rounded-lg border p-2 text-xs shadow-sm group " + t.groupCard}
                       style={{ borderLeft: `4px solid ${color}` }}>
