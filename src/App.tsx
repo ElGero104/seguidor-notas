@@ -166,7 +166,8 @@ const MiniDB = {
   },
 
   persist(db: typeof DB_SCHEMA) {
-    MEM_CACHE = db;
+    // Copia nueva para que React detecte el cambio (setData compara por referencia)
+    MEM_CACHE = JSON.parse(JSON.stringify(db));
     syncCloud(db);
   },
 
