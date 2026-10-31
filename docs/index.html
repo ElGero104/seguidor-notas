@@ -163,12 +163,10 @@ const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "
 
 // ==================== CAPA DE BASE DE DATOS (MiniDB) ====================
 /**
- * Motor embebido tipo ORM: la DB es un objeto { tabla: filas[] } en localStorage.
- * En load() se fusiona la config guardada con los valores por defecto,
- * para que los campos nuevos (nota_minima, archivados, etc.) siempre existan.
+ * Caché en memoria: la fuente única de verdad es Supabase (pullCloud/syncCloud).
+ * localStorage ya no se usa para datos; solo queda la sesión de Auth y el
+ * contador de sesiones Pomodoro.
  */
-const DB_KEY = "seguidor-notas-db";
-
 const CONFIG_DEFAULT: Config = { dark: false, nota_minima: 3.0, nota_ok: 4.0, archivados: [], activo: "", semestres: [], fechasSemestre: {} };
 
 const DB_SCHEMA = {
@@ -182,30 +180,19 @@ const DB_SCHEMA = {
 
 type Row = { id: string; [k: string]: any };
 
+let MEM_CACHE: typeof DB_SCHEMA = { ...DB_SCHEMA, config: [{ ...CONFIG_DEFAULT }] };
+
 const MiniDB = {
   load(): typeof DB_SCHEMA {
-    try {
-      const raw = localStorage.getItem(DB_KEY);
-      if (raw) {
-        const p = JSON.parse(raw);
-        // Merge de la config: defaults + campos guardados (compatibilidad hacia atrás)
-        const cfg = { ...CONFIG_DEFAULT, ...(p.config?.[0] || {}) };
-        // Migración: derivar la lista de semestres de las materias existentes
-        // y elegir el último como activo (compatibilidad con datos antiguos)
-        if (!cfg.semestres || cfg.semestres.length === 0) {
-          cfg.semestres = [...new Set((p.materias || []).map((m: any) => m.semestre || "Sin semestre"))];
-        }
-        if (!cfg.activo || !cfg.semestres.includes(cfg.activo)) {
-          cfg.activo = cfg.semestres.slice().sort()[cfg.semestres.length - 1] || "";
-        }
-        return { ...DB_SCHEMA, ...p, config: [cfg] };
-      }
-    } catch {}
-    return { ...DB_SCHEMA, config: [{ ...CONFIG_DEFAULT }] };
+    return MEM_CACHE;
+  },
+
+  setCache(db: typeof DB_SCHEMA) {
+    MEM_CACHE = db;
   },
 
   persist(db: typeof DB_SCHEMA) {
-    localStorage.setItem(DB_KEY, JSON.stringify(db));
+    MEM_CACHE = db;
     syncCloud(db);
   },
 
@@ -361,7 +348,7 @@ async function pullCloud() {
     (db.clases as Clase[]) = clases.map((c: any) => ({ id: c.id, materiaId: c.materia_id, dia: c.dia, inicio: c.inicio, fin: c.fin, salon: c.salon ?? "" }));
     (db.eventos as Evento[]) = eventos.map((e: any) => ({ id: e.id, titulo: e.titulo, fecha: e.fecha, hora: e.hora ?? undefined, lugar: e.lugar ?? undefined }));
     (db.recursos as Recurso[]) = recursos.map((r: any) => ({ id: r.id, materiaId: r.materia_id, titulo: r.titulo, url: r.url ?? "", tipo: r.tipo ?? "link" }));
-    MiniDB.persist(db);
+    MiniDB.setCache(db);
   } catch {}
 }
 
@@ -527,7 +514,7 @@ function useDB() {
   const refresh = () => setData(MiniDB.load());
   useEffect(() => { refresh(); }, []);
   // Refresco global: al deshacer o restaurar un respaldo, todos los
-  // componentes conectados con useDB() recargan desde localStorage
+  // componentes conectados con useDB() recargan desde la caché/DB
   useEffect(() => {
     const h = () => refresh();
     window.addEventListener("db-undo", h);
@@ -543,14 +530,14 @@ function useDB() {
  * restaurarla durante 5 segundos. Al deshacer (o restaurar un respaldo) se
  * emite el evento "db-undo" y todos los componentes con useDB() se refrescan.
  */
-type UndoInfo = { json: string; msg: string; key: number };
+type UndoInfo = { snapshot: typeof DB_SCHEMA; msg: string; key: number };
 let undoState: UndoInfo | null = null;
 const undoSubs = new Set<() => void>();
 const notifyUndo = () => undoSubs.forEach((f) => f());
 
-/** Toma la instantánea ACTUAL de la DB y muestra el aviso. Llamar ANTES de mutar. */
+/** Toma la instantánea ACTUAL de la caché y muestra el aviso. Llamar ANTES de mutar. */
 function setUndo(msg: string) {
-  undoState = { json: localStorage.getItem(DB_KEY) || "", msg, key: Date.now() };
+  undoState = { snapshot: JSON.parse(JSON.stringify(MiniDB.load())), msg, key: Date.now() };
   notifyUndo();
 }
 
@@ -561,12 +548,9 @@ function clearUndo() {
 
 function deshacerUltimo() {
   if (!undoState) return;
-  const json = undoState.json;
+  const snap = undoState.snapshot;
   clearUndo();
-  try {
-    if (json) localStorage.setItem(DB_KEY, json);
-    else localStorage.removeItem(DB_KEY);
-  } catch {}
+  MiniDB.persist(JSON.parse(JSON.stringify(snap)));
   window.dispatchEvent(new Event("db-undo"));
 }
 
@@ -635,13 +619,11 @@ function exportarCSV(data: any) {
  * actuales (se puede deshacer durante 5 segundos desde el aviso).
  */
 function exportarJSON() {
-  const raw = localStorage.getItem(DB_KEY);
-  if (!raw) { alert("⚠️ No hay datos que respaldar todavía."); return; }
   const respaldo = {
     app: "seguidor-notas",
     version: 1,
     fecha: new Date().toISOString(),
-    db: JSON.parse(raw),
+    db: JSON.parse(JSON.stringify(MiniDB.load())),
   };
   const blob = new Blob([JSON.stringify(respaldo, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
