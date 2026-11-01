@@ -1150,6 +1150,7 @@ function TabMaterias({ data, refresh, t }: any) {
   const [form, setForm] = useState({ nombre: "", profesor: "", creditos: 3 });
   const [q, setQ] = useState("");
   const [editando, setEditando] = useState<string | null>(null);
+  const [minimizadas, setMinimizadas] = useState<Record<string, boolean>>({});
   const [ef, setEf] = useState({ nombre: "", profesor: "", creditos: 3, color: "#6366f1" });
   const cfg: Config = data.config[0];
   const activo = cfg.activo;
@@ -1408,12 +1409,18 @@ function TabMaterias({ data, refresh, t }: any) {
                       {p.toFixed(2)}
                     </span>
                   )}
+                  <Btn t={t} tone="soft" onClick={() => setMinimizadas({ ...minimizadas, [m.id]: !minimizadas[m.id] })}
+                    title={minimizadas[m.id] ? "Mostrar detalle de la materia" : "Minimizar detalle de la materia"}>
+                    {minimizadas[m.id] ? "▸" : "▾"}
+                  </Btn>
                   <Btn t={t} tone="soft" onClick={() => empezarEdicion(m)} title="Editar materia">✎</Btn>
                   <Btn t={t} tone="danger" onClick={() => eliminar(m.id)}>✕</Btn>
                 </div>
               </div>
               )}
 
+              {!minimizadas[m.id] && (
+              <>
               {/* Aviso: mínimo para ganar la materia (solo si hay pendientes) */}
               {c.restante > 0 && (
                 <div className={"mt-2 text-xs " + t.sub}>
@@ -1448,6 +1455,8 @@ function TabMaterias({ data, refresh, t }: any) {
               </div>
               <FormNota materiaId={m.id} refresh={refresh} t={t} />
               <RecursosMateria materiaId={m.id} data={data} refresh={refresh} t={t} />
+              </>
+              )}
             </div>
           </Fade>
         );
@@ -1531,6 +1540,28 @@ function TabNotas({ data, refresh, t }: any) {
   const activo = cfg.activo;
   const matsActivos = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === activo);
   const sems = matsActivos.length ? [activo] : [];
+  const [copiarDe, setCopiarDe] = useState<Record<string, string>>({});
+
+  /** Copia la estructura (cantidad de notas y peso de cada una) de otra materia del mismo semestre. */
+  const copiarEstructura = (m: Materia) => {
+    const origenId = copiarDe[m.id];
+    if (!origenId) return;
+    const origen = matsActivos.find((x) => x.id === origenId);
+    if (!origen) return;
+    const notasOrigen = MiniDB.find<Nota>("notas", (x) => x.materiaId === origenId);
+    if (notasOrigen.length === 0) return;
+    const actuales = MiniDB.find<Nota>("notas", (x) => x.materiaId === m.id);
+    if (actuales.length > 0 && !confirm(`¿Reemplazar las ${actuales.length} notas actuales de ${m.nombre} por la estructura de ${origen.nombre} (${notasOrigen.length} notas)?`)) return;
+    setUndo("📋 Estructura copiada de " + origen.nombre);
+    MiniDB.removeWhere("notas", (x) => x.materiaId === m.id);
+    notasOrigen.forEach((n) => {
+      MiniDB.insert<Nota>("notas", {
+        id: uid(), materiaId: m.id, nombre: n.nombre, valor: null, porcentaje: n.porcentaje,
+      });
+    });
+    setCopiarDe({ ...copiarDe, [m.id]: "" });
+    refresh();
+  };
 
   return (
     <div className="space-y-5">
@@ -1586,6 +1617,23 @@ function TabNotas({ data, refresh, t }: any) {
                               placeholder="Nº" value={cantidades[m.id] ?? ""}
                               onChange={(e) => setCantidades({ ...cantidades, [m.id]: e.target.value })} />
                             <Btn t={t} tone="soft" onClick={() => generar(m)}>Generar estructura</Btn>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <select
+                              className={inputBase + " w-auto " + t.input}
+                              value={copiarDe[m.id] ?? ""}
+                              onChange={(e) => setCopiarDe({ ...copiarDe, [m.id]: e.target.value })}
+                              title="Copiar la estructura de notas (cantidad y % de cada una) de otra materia del mismo semestre">
+                              <option value="">📋 Copiar estructura de…</option>
+                              {matsActivos.filter((x) => x.id !== m.id && MiniDB.find<Nota>("notas", (n) => n.materiaId === x.id).length > 0)
+                                .map((x) => (
+                                  <option key={x.id} value={x.id}>{x.nombre}</option>
+                                ))}
+                            </select>
+                            <Btn t={t} tone="soft" onClick={() => copiarEstructura(m)}
+                              disabled={!copiarDe[m.id]} title="Copiar cantidad de notas y porcentajes desde la materia elegida">
+                              Copiar
+                            </Btn>
                           </div>
                         </div>
                       </div>
