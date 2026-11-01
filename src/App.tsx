@@ -391,29 +391,35 @@ function diasHasta(fecha?: string): number | null {
 /** Tokens de clases Tailwind según el tema: la app pasa `t` a todos los componentes. */
 function tokens(dark: boolean) {
   return {
-    page: dark ? "bg-slate-900" : "bg-slate-100",
-    card: dark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200",
+    page: dark
+      ? "bg-[#0b1020] bg-[radial-gradient(1200px_600px_at_80%_-10%,rgba(99,102,241,0.18),transparent),radial-gradient(900px_500px_at_-10%_20%,rgba(217,70,239,0.12),transparent)]"
+      : "bg-[#f4f6fb] bg-[radial-gradient(1200px_600px_at_80%_-10%,rgba(99,102,241,0.12),transparent),radial-gradient(900px_500px_at_-10%_20%,rgba(56,189,248,0.10),transparent)]",
+    card: dark
+      ? "bg-white/[0.04] border-white/10 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.35)]"
+      : "bg-white/80 border-slate-200/80 backdrop-blur-xl shadow-[0_8px_30px_rgba(15,23,42,0.06)]",
     text: dark ? "text-slate-100" : "text-slate-800",
     sub: dark ? "text-slate-400" : "text-slate-500",
     faint: dark ? "text-slate-500" : "text-slate-400",
     input: dark
-      ? "bg-slate-900 border-slate-600 text-slate-100 placeholder-slate-500"
-      : "bg-white border-slate-300 text-slate-800 placeholder-slate-400",
-    softBtn: dark ? "bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30" : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100",
-    nav: dark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200",
-    navIn: dark ? "text-slate-300 hover:bg-slate-700" : "text-slate-600 hover:bg-slate-100",
-    group: dark ? "bg-slate-800/60 border-slate-700" : "bg-slate-50 border-slate-200",
-    groupCard: dark ? "bg-slate-900 border-slate-700" : "bg-white border-slate-100",
+      ? "bg-white/[0.06] border-white/10 text-slate-100 placeholder-slate-500 focus:border-indigo-400/60"
+      : "bg-white border-slate-200 text-slate-800 placeholder-slate-400 focus:border-indigo-400",
+    softBtn: dark
+      ? "bg-indigo-400/15 text-indigo-300 hover:bg-indigo-400/25 border border-indigo-400/20"
+      : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100",
+    nav: dark ? "bg-[#0b1020]/80 border-white/10 backdrop-blur-xl" : "bg-white/80 border-slate-200/80 backdrop-blur-xl",
+    navIn: dark ? "text-slate-300 hover:bg-white/10" : "text-slate-600 hover:bg-slate-100",
+    group: dark ? "bg-white/[0.03] border-white/10" : "bg-slate-50/80 border-slate-200/70",
+    groupCard: dark ? "bg-white/[0.05] border-white/10" : "bg-white border-slate-100",
     ok: dark ? "text-emerald-400" : "text-emerald-600",
-    okBg: dark ? "bg-emerald-500/20 text-emerald-300" : "bg-emerald-100 text-emerald-700",
-    badBg: dark ? "bg-red-500/20 text-red-300" : "bg-red-100 text-red-700",
-    warnBg: dark ? "bg-amber-500/20 text-amber-300" : "bg-amber-100 text-amber-700",
-    grad: dark ? "from-indigo-500 to-violet-500" : "from-indigo-600 to-violet-600",
-    h2: dark ? "text-slate-200 border-indigo-500/40" : "text-slate-700 border-indigo-200",
-    ring: dark ? "ring-2 ring-indigo-500" : "ring-2 ring-indigo-400",
-    hero: dark ? "from-indigo-600 via-violet-600 to-fuchsia-600" : "from-indigo-500 via-violet-500 to-fuchsia-500",
-    heroCard: "bg-white/15 backdrop-blur border border-white/20",
-    navMob: dark ? "bg-slate-900/95 border-slate-700" : "bg-white/95 border-slate-200",
+    okBg: dark ? "bg-emerald-400/15 text-emerald-300 border border-emerald-400/20" : "bg-emerald-50 text-emerald-700 border border-emerald-200",
+    badBg: dark ? "bg-red-400/15 text-red-300 border border-red-400/20" : "bg-red-50 text-red-700 border border-red-200",
+    warnBg: dark ? "bg-amber-400/15 text-amber-300 border border-amber-400/20" : "bg-amber-50 text-amber-700 border border-amber-200",
+    grad: dark ? "from-indigo-400 via-violet-400 to-fuchsia-400" : "from-indigo-600 via-violet-600 to-fuchsia-600",
+    h2: dark ? "text-slate-100 border-indigo-400/30" : "text-slate-800 border-indigo-200",
+    ring: dark ? "ring-2 ring-indigo-400/70" : "ring-2 ring-indigo-500/60",
+    hero: dark ? "from-[#312e81] via-[#5b21b6] to-[#831843]" : "from-indigo-600 via-violet-600 to-fuchsia-600",
+    heroCard: "bg-white/10 backdrop-blur-md border border-white/20 shadow-inner",
+    navMob: dark ? "bg-[#0b1020]/90 border-white/10 backdrop-blur-xl" : "bg-white/90 border-slate-200/80 backdrop-blur-xl",
   };
 }
 
@@ -430,20 +436,20 @@ function estadoBg(v: number, cfg: Config, t: any) {
 }
 
 // Clases base compartidas
-const cardBase = "rounded-2xl border shadow-md p-5 transition hover:shadow-lg";
-const inputBase = "w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400";
-const labelBase = "block text-xs font-semibold mb-1 uppercase tracking-wide";
+const cardBase = "rounded-3xl border p-5 sm:p-6 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(15,23,42,0.12)]";
+const inputBase = "w-full rounded-xl border px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/50 transition";
+const labelBase = "block text-[11px] font-bold mb-1.5 uppercase tracking-wider";
 
 /** Botón con variantes primary / soft (adaptada al tema) / danger. */
 function Btn({ children, onClick, tone = "primary", t, className = "" }: any) {
   const tones = {
-    primary: "bg-indigo-600 text-white hover:bg-indigo-700",
+    primary: "bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-500 hover:to-violet-500 shadow-lg shadow-indigo-600/25 active:scale-[0.98]",
     soft: t.softBtn,
-    danger: t ? "text-red-500 hover:bg-red-500/10" : "text-red-500 hover:bg-red-50",
+    danger: t ? "text-red-400 hover:bg-red-500/10" : "text-red-500 hover:bg-red-50",
   };
   return (
     <button onClick={onClick}
-      className={`rounded-lg px-3 py-2 text-sm font-medium transition ${tones[tone]} ${className}`}>
+      className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 active:scale-[0.97] ${tones[tone]} ${className}`}>
       {children}
     </button>
   );
@@ -474,8 +480,8 @@ function Fade({ children, k }: any) {
   return (
     <div style={{
       opacity: on ? 1 : 0,
-      transform: on ? "none" : "translateY(10px)",
-      transition: "opacity 0.25s ease, transform 0.25s ease",
+      transform: on ? "none" : "translateY(14px) scale(0.99)",
+      transition: "opacity 0.35s cubic-bezier(0.22,1,0.36,1), transform 0.35s cubic-bezier(0.22,1,0.36,1)",
     }}>
       {children}
     </div>
@@ -2522,9 +2528,10 @@ export default function App() {
     <div className={"min-h-screen " + t.page + " transition-colors"}>
       <div className="max-w-4xl mx-auto p-4 sm:p-8 pb-24 md:pb-8">
         {/* --- Encabezado hero con degradado --- */}
-        <header className={"relative overflow-hidden rounded-3xl mb-6 p-6 sm:p-8 text-white shadow-lg bg-gradient-to-br " + t.hero}>
-          <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/10 pointer-events-none" />
-          <div className="absolute -bottom-16 -left-8 w-48 h-48 rounded-full bg-black/10 pointer-events-none" />
+        <header className={"relative overflow-hidden rounded-[2rem] mb-6 p-6 sm:p-10 text-white shadow-2xl shadow-indigo-900/20 bg-gradient-to-br " + t.hero}>
+          <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full bg-white/10 blur-2xl pointer-events-none" />
+          <div className="absolute -bottom-24 -left-12 w-64 h-64 rounded-full bg-fuchsia-300/20 blur-3xl pointer-events-none" />
+          <div className="absolute top-1/2 left-1/3 w-32 h-32 rounded-full bg-indigo-300/20 blur-2xl pointer-events-none" />
           <div className="relative flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
             <div>
               <h1 className="text-2xl sm:text-3xl font-extrabold">🎓 Seguidor de Notas</h1>
@@ -2571,18 +2578,18 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="relative grid grid-cols-3 gap-3 mt-6">
-            <div className={"rounded-2xl p-3 " + t.heroCard}>
+          <div className="relative grid grid-cols-3 gap-3 sm:gap-4 mt-6">
+            <div className={"rounded-2xl p-3 sm:p-4 transition-transform hover:scale-[1.03] " + t.heroCard}>
               <div className="text-[10px] uppercase font-bold text-white/70">Promedio</div>
-              <div className="text-2xl font-extrabold">{promGeneral !== null ? promGeneral.toFixed(2) : "—"}</div>
+              <div className="text-2xl sm:text-3xl font-extrabold">{promGeneral !== null ? promGeneral.toFixed(2) : "—"}</div>
             </div>
-            <div className={"rounded-2xl p-3 " + t.heroCard}>
+            <div className={"rounded-2xl p-3 sm:p-4 transition-transform hover:scale-[1.03] " + t.heroCard}>
               <div className="text-[10px] uppercase font-bold text-white/70">Materias</div>
-              <div className="text-2xl font-extrabold">{mats.length}</div>
+              <div className="text-2xl sm:text-3xl font-extrabold">{mats.length}</div>
             </div>
-            <div className={"rounded-2xl p-3 " + t.heroCard}>
+            <div className={"rounded-2xl p-3 sm:p-4 transition-transform hover:scale-[1.03] " + t.heroCard}>
               <div className="text-[10px] uppercase font-bold text-white/70">Créditos</div>
-              <div className="text-2xl font-extrabold">{mats.reduce((s, m) => s + m.creditos, 0)}</div>
+              <div className="text-2xl sm:text-3xl font-extrabold">{mats.reduce((s, m) => s + m.creditos, 0)}</div>
             </div>
           </div>
           {/* --- Selector de semestre activo --- */}
@@ -2602,11 +2609,13 @@ export default function App() {
         </header>
 
         {/* --- Navegación superior (solo escritorio) --- */}
-        <nav className={"hidden md:flex flex-wrap gap-2 mb-6 rounded-xl p-1.5 border shadow-sm w-fit mx-auto " + t.nav}>
+        <nav className={"hidden md:flex flex-wrap gap-1.5 mb-6 rounded-2xl p-1.5 border shadow-lg w-fit mx-auto " + t.nav}>
           {tabs.map((x) => (
             <button key={x.id} onClick={() => setTab(x.id)}
-              className={"px-4 py-2 rounded-lg text-sm font-semibold transition " +
-                (tab === x.id ? "bg-indigo-600 text-white shadow" : t.navIn)}>
+              className={"px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 active:scale-95 " +
+                (tab === x.id
+                  ? "bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-600/30"
+                  : t.navIn)}>
               {x.icon} {x.label}
             </button>
           ))}
@@ -2633,12 +2642,12 @@ export default function App() {
       {/* --- Navegación inferior fija (solo móvil) --- */}
       <nav className={"fixed bottom-0 inset-x-0 z-50 md:hidden border-t backdrop-blur " + t.navMob}
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-        <div className="grid grid-cols-6 max-w-4xl mx-auto">
+        <div className="grid grid-cols-8 max-w-4xl mx-auto">
           {tabs.map((x) => (
             <button key={x.id} onClick={() => setTab(x.id)}
-              className={"flex flex-col items-center gap-0.5 py-2 text-[10px] font-semibold transition " +
-                (tab === x.id ? "text-indigo-500" : t.sub)}>
-              <span className="text-xl leading-none">{x.icon}</span>
+              className={"flex flex-col items-center gap-0.5 py-2.5 text-[9px] font-semibold transition-all duration-200 active:scale-90 " +
+                (tab === x.id ? "text-indigo-500 -translate-y-0.5" : t.sub)}>
+              <span className={"text-xl leading-none transition-transform " + (tab === x.id ? "scale-110" : "")}>{x.icon}</span>
               {x.label}
             </button>
           ))}
