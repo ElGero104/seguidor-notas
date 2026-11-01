@@ -1896,6 +1896,7 @@ function TabCalendario({ data, t }: any) {
   const [mes, setMes] = useState(hoy.getMonth());
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [diaSel, setDiaSel] = useState<number | null>(null);
+  const [vista, setVista] = useState<"entregas" | "clases">("entregas");
 
   const pad = (n: number) => String(n).padStart(2, "0");
   const fechaDe = (d: number) => `${anio}-${pad(mes + 1)}-${pad(d)}`;
@@ -1960,10 +1961,23 @@ function TabCalendario({ data, t }: any) {
 
   return (
     <div className="space-y-5">
+      {/* Selector de vista: Entregas o Clases (mismo diseño, mismo rango de semestre) */}
+      <div className={"flex gap-1.5 p-1.5 rounded-2xl border w-fit " + t.nav}>
+        {([["entregas", "📌 Entregas"], ["clases", "🕒 Clases"]] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setVista(id)}
+            className={"px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 active:scale-95 " +
+              (vista === id
+                ? "bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-600/30"
+                : t.navIn)}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* Navegación de mes */}
-      <div className={cardBase + " " + t.card + " flex items-center justify-between"}>
+      <div className={cardBase + " " + t.card + " flex items-center justify-between gap-2"}>
         <Btn t={t} tone="soft" onClick={() => mover(-1)}>← Anterior</Btn>
-        <h2 className={"text-lg font-bold " + t.text}>{MESES[mes]} {anio}</h2>
+        <h2 className={"text-base sm:text-xl font-bold text-center " + t.text}>{MESES[mes]} {anio}</h2>
         <Btn t={t} tone="soft" onClick={() => mover(1)}>Siguiente →</Btn>
       </div>
 
@@ -1996,22 +2010,22 @@ function TabCalendario({ data, t }: any) {
       </div>
 
       {/* Encabezado de días de la semana */}
-      <div className={"grid grid-cols-7 gap-0.5 sm:gap-1 text-center text-[9px] sm:text-[10px] uppercase font-semibold " + t.faint}>
+      <div className={"grid grid-cols-7 gap-1 sm:gap-2 text-center text-[10px] sm:text-xs uppercase font-bold " + t.faint}>
         {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => <span key={d}>{d}</span>)}
       </div>
 
-      {/* Grilla del mes: cada celda muestra sus entregas con color por urgencia */}
-      <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
+      {/* Grilla del mes (más grande) según la vista activa */}
+      <div className="grid grid-cols-7 gap-1 sm:gap-2">
         {celdas.map((d, i) => {
           if (d === null) return <div key={"v" + i} />;
           const evs = porDia[d] || [];
           const dd = diasHasta(fechaDe(d));
           return (
             <div key={d} onClick={() => setDiaSel(d)}
-              className={"min-h-14 sm:min-h-20 rounded-md sm:rounded-lg border p-0.5 sm:p-1 text-[10px] sm:text-xs cursor-pointer hover:shadow-md transition " + t.group + (esHoy(d) ? " " + t.ring : "")}>
-              <div className={"font-bold mb-1 " + (esHoy(d) ? "text-indigo-500" : t.sub)}>{d}</div>
+              className={"min-h-20 sm:min-h-28 rounded-xl border p-1.5 sm:p-2 text-xs sm:text-sm cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 " + t.group + (esHoy(d) ? " " + t.ring : "")}>
+              <div className={"font-extrabold text-sm sm:text-base mb-1 " + (esHoy(d) ? "text-indigo-500" : t.sub)}>{d}</div>
               <div className="space-y-1">
-                {evs.map((n) => {
+                {vista === "entregas" && evs.map((n) => {
                   const m = (data.materias as Materia[]).find((x) => x.id === n.materiaId);
                   const overdue = dd !== null && dd < 0;
                   const soon = dd !== null && dd >= 0 && dd <= 3;
@@ -2024,11 +2038,18 @@ function TabCalendario({ data, t }: any) {
                         color: overdue ? "#ef4444" : soon ? "#f59e0b" : undefined,
                         fontWeight: overdue || soon ? 700 : 400,
                       }}>
-                      {m?.nombre.slice(0, 10) ?? "—"}
+                      {m?.nombre.slice(0, 12) ?? "—"}
                     </div>
                   );
                 })}
-                {(clasesPorDia[d] || []).map((c) => {
+                {vista === "entregas" && (evsPorDia[d] || []).map((ev) => (
+                  <div key={ev.id} title={ev.titulo + (ev.hora ? " · " + ev.hora : "") + (ev.lugar ? " · " + ev.lugar : "")}
+                    className="truncate rounded px-1 py-0.5"
+                    style={{ background: "rgba(99,102,241,0.25)", borderLeft: "2px solid #6366f1" }}>
+                    {ev.titulo.slice(0, 14)}
+                  </div>
+                ))}
+                {vista === "clases" && (clasesPorDia[d] || []).map((c) => {
                   const m = (data.materias as Materia[]).find((x) => x.id === c.materiaId);
                   const zoom = (data.recursos as Recurso[]).find((r) =>
                     r.materiaId === c.materiaId && r.url && /zoom\.us\//i.test(r.url));
@@ -2036,21 +2057,14 @@ function TabCalendario({ data, t }: any) {
                     <div key={c.id} title={`${m?.nombre ?? ""} · ${c.inicio}–${c.fin}${c.salon ? " · " + c.salon : ""}`}
                       className="truncate rounded px-1 py-0.5 flex items-center gap-1"
                       style={{ background: (m?.color ?? "#64748b") + "22", borderLeft: `2px solid ${m?.color ?? "#64748b"}` }}>
-                      <span className="truncate">🕒 {m?.nombre.slice(0, 8) ?? "—"} {c.inicio}</span>
+                      <span className="truncate">🕒 {m?.nombre.slice(0, 10) ?? "—"} {c.inicio}</span>
                       {zoom && (
-                        <button onClick={() => abrirZoom(zoom.url)} title={`Abrir Zoom en la app: ${zoom.titulo}`}
+                        <button onClick={(e) => { e.stopPropagation(); abrirZoom(zoom.url); }} title={`Abrir Zoom en la app: ${zoom.titulo}`}
                           className="ml-auto text-indigo-500 hover:text-indigo-300 font-bold">🎥</button>
                       )}
                     </div>
                   );
                 })}
-                {(evsPorDia[d] || []).map((ev) => (
-                  <div key={ev.id} title={ev.titulo + (ev.hora ? " · " + ev.hora : "") + (ev.lugar ? " · " + ev.lugar : "")}
-                    className="truncate rounded px-1 py-0.5"
-                    style={{ background: "rgba(99,102,241,0.25)", borderLeft: "2px solid #6366f1" }}>
-                    {ev.titulo.slice(0, 12)}
-                  </div>
-                ))}
               </div>
             </div>
           );
@@ -2058,7 +2072,9 @@ function TabCalendario({ data, t }: any) {
       </div>
 
       <p className={"text-xs text-center " + t.faint}>
-        Las celdas muestran las entregas coloreadas por materia (rojo = vencida, ámbar = vence en ≤3 días), las clases del semestre activo con 🕒 (🎥 abre Zoom) y en azul los eventos importados de Google Calendar. Toca un día para ver sus clases.
+        {vista === "entregas"
+          ? "Vista Entregas: coloreadas por materia (rojo = vencida, ámbar = vence en ≤3 días) y en azul los eventos importados. Toca un día para ver el detalle."
+          : "Vista Clases: solo aparecen dentro del rango de fechas del semestre activo. Toca un día para ver sus clases y unirse por Zoom."}
       </p>
 
       {/* Detalle del día seleccionado: clases completas con botón de unirse */}
@@ -2071,9 +2087,10 @@ function TabCalendario({ data, t }: any) {
               </h2>
               <button onClick={() => setDiaSel(null)} className={"text-xl " + t.faint}>✕</button>
             </div>
-            {(clasesPorDia[diaSel] || []).length === 0 && (
-              <p className={"text-sm " + t.faint}>Sin clases este día.</p>
+            {vista === "clases" && (clasesPorDia[diaSel] || []).length === 0 && (
+              <p className={"text-sm " + t.faint}>Sin clases este día (dentro del semestre activo).</p>
             )}
+            {vista === "clases" && (
             <div className="space-y-2">
               {(clasesPorDia[diaSel] || [])
                 .sort((a, b) => a.inicio.localeCompare(b.inicio))
@@ -2099,7 +2116,8 @@ function TabCalendario({ data, t }: any) {
                   );
                 })}
             </div>
-            {(porDia[diaSel] || []).length > 0 && (
+            )}
+            {vista === "entregas" && (porDia[diaSel] || []).length > 0 && (
               <div className="mt-4">
                 <h3 className={"font-bold text-sm mb-1 " + t.text}>📌 Entregas</h3>
                 <div className="space-y-1">
@@ -2525,7 +2543,7 @@ export default function App() {
   if (!sesion) return <LoginInline t={tokens(false)} />;
 
   return (
-    <div className={"min-h-screen " + t.page + " transition-colors"}>
+    <div className={"min-h-screen " + t.page + " transition-colors" + (cfg.dark ? " dark" : "")}>
       <div className="w-full max-w-4xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-8">
         {/* --- Encabezado hero con degradado --- */}
         <header className={"relative overflow-hidden rounded-[1.5rem] sm:rounded-[2rem] mb-6 p-5 sm:p-10 text-white shadow-2xl shadow-indigo-900/20 bg-gradient-to-br " + t.hero}>
