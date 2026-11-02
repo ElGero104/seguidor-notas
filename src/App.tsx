@@ -2277,33 +2277,67 @@ function TabDashboard({ data, refresh, t, goTab }: any) {
 
   return (
     <div className="space-y-5">
-      {/* --- ¿Qué sigue hoy? --- */}
+      {/* --- Vista HOY: agenda completa del día --- */}
       <Fade k="hoy">
         <div className={cardBase + " " + t.card}>
           <h2 className={"font-bold mb-3 " + t.text}>
-            📍 ¿Qué sigue hoy? <span className={"text-xs font-medium " + t.faint}>{DIAS[diaHoy]}</span>
+            📍 Hoy <span className={"text-xs font-medium " + t.faint}>{DIAS[diaHoy]} · {new Date().toLocaleDateString("es-CO", { day: "numeric", month: "long" })}</span>
           </h2>
-          <div className="flex flex-wrap gap-2">
-            {claseAhora && (
-              <span className={"px-3 py-1.5 rounded-full text-sm font-semibold " + t.okBg}>
-                🔵 Ahora: {nomMat(claseAhora.materiaId)} hasta {claseAhora.fin}{claseAhora.salon ? " · " + claseAhora.salon : ""}
-              </span>
+          {clasesHoy.length === 0 && entregasHoy.length === 0 && (
+            <p className={"text-sm " + t.sub}>🎉 Hoy no tienes clases ni entregas. ¡Descansa!</p>
+          )}
+          <div className="space-y-4">
+            {clasesHoy.length > 0 && (
+              <div>
+                <h3 className={"text-xs font-bold uppercase tracking-wide mb-2 " + t.faint}>🕒 Clases de hoy ({clasesHoy.length})</h3>
+                <div className="space-y-1.5">
+                  {clasesHoy.map((c) => {
+                    const m = mats.find((x) => x.id === c.materiaId);
+                    const zoom = (data.recursos as Recurso[]).find((r) => r.materiaId === c.materiaId && r.url && /zoom\.us\//i.test(r.url));
+                    const esAhora = claseAhora?.id === c.id;
+                    return (
+                      <div key={c.id} className={"flex items-center gap-2 rounded-xl border px-3 py-2 text-sm " + (esAhora ? t.warnBg : t.groupCard)}
+                        style={{ borderLeft: `4px solid ${m?.color ?? "#64748b"}` }}>
+                        <span className="font-bold">{c.inicio}–{c.fin}</span>
+                        <span className={"font-semibold " + t.text}>{m?.nombre ?? "—"}</span>
+                        {c.salon && <span className={t.faint}>· 🚪 {c.salon}</span>}
+                        {esAhora && <span className="text-xs font-bold">🔴 AHORA</span>}
+                        {zoom && (
+                          <button onClick={() => abrirZoom(zoom.url)} title="Abrir Zoom en la app"
+                            className="ml-auto text-indigo-500 hover:text-indigo-300 font-bold">🎥 Unirse</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
-            {proximaClase && !claseAhora && (
-              <span className={"px-3 py-1.5 rounded-full text-sm font-semibold " + t.warnBg}>
-                ⏰ Siguiente: {nomMat(proximaClase.materiaId)} · {proximaClase.inicio}–{proximaClase.fin}{proximaClase.salon ? " · " + proximaClase.salon : ""}
-              </span>
-            )}
-            {entregasHoy.map((n) => (
-              <span key={n.id} className={"px-3 py-1.5 rounded-full text-sm font-semibold " + t.badBg}>
-                ⚠️ Entrega hoy: {n.nombre} ({nomMat(n.materiaId)})
-              </span>
-            ))}
-            {clasesHoy.length > 0 && !claseAhora && !proximaClase && (
-              <span className={"px-3 py-1.5 rounded-full text-sm " + t.okBg}>✅ Clases de hoy terminadas</span>
-            )}
-            {clasesHoy.length === 0 && entregasHoy.length === 0 && (
-              <span className={"px-3 py-1.5 rounded-full text-sm " + t.okBg}>🎉 Hoy no tienes clases ni entregas. ¡Descansa!</span>
+            {(entregasHoy.length > 0 || proximas.some((n) => diasHasta(n.fecha) === 1)) && (
+              <div>
+                <h3 className={"text-xs font-bold uppercase tracking-wide mb-2 " + t.faint}>📌 Entregas (hoy / mañana)</h3>
+                <div className="space-y-1.5">
+                  {entregasHoy.map((n) => {
+                    const m = mats.find((x) => x.id === n.materiaId);
+                    return (
+                      <div key={n.id} className={"flex items-center gap-2 rounded-xl border px-3 py-2 text-sm " + t.badBg}>
+                        <span className="font-semibold">{m?.nombre ?? "—"}</span>
+                        <span>· {n.nombre}</span>
+                        <span className="ml-auto"><FechaBadge fecha={n.fecha} t={t} /></span>
+                      </div>
+                    );
+                  })}
+                  {proximas.filter((n) => diasHasta(n.fecha) === 1).map((n) => {
+                    const m = mats.find((x) => x.id === n.materiaId);
+                    return (
+                      <div key={n.id} className={"flex items-center gap-2 rounded-xl border px-3 py-2 text-sm " + t.warnBg}>
+                        <span className="font-semibold">{m?.nombre ?? "—"}</span>
+                        <span>· {n.nombre}</span>
+                        <span className="ml-auto"><FechaBadge fecha={n.fecha} t={t} /></span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -2587,6 +2621,19 @@ export default function App() {
   });
   const promGeneral = peso ? suma / peso : null;
 
+  // Próxima clase del semestre activo (para el hero)
+  const ahoraH = new Date();
+  const diaHoyH = (ahoraH.getDay() + 6) % 7;
+  const minHoyH = ahoraH.getHours() * 60 + ahoraH.getMinutes();
+  const aMinH = (h: string) => { const [H, M] = h.split(":").map(Number); return H * 60 + (M || 0); };
+  const idsActH = new Set(mats.map((m) => m.id));
+  const clasesHoyH = (data.clases as Clase[])
+    .filter((c) => idsActH.has(c.materiaId) && c.dia === diaHoyH)
+    .sort((a, b) => (a.inicio < b.inicio ? -1 : 1));
+  const claseAhoraH = clasesHoyH.find((c) => minHoyH >= aMinH(c.inicio) && minHoyH < aMinH(c.fin));
+  const proximaClaseH = claseAhoraH || clasesHoyH.find((c) => aMinH(c.inicio) > minHoyH) || null;
+  const nomProxH = proximaClaseH ? (mats.find((m) => m.id === proximaClaseH.materiaId)?.nombre ?? "—") : null;
+
   if (!authListo) return null;
   if (!sesion) return <LoginInline t={tokens(false)} />;
 
@@ -2602,6 +2649,12 @@ export default function App() {
             <div>
               <h1 className="text-2xl sm:text-3xl font-extrabold">🎓 Seguidor de Notas</h1>
               <p className="text-sm text-white/80">Tu semestre de un vistazo: notas, simulador, horarios y calendario.</p>
+              {proximaClaseH && nomProxH && (
+                <div className={"mt-2 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold bg-white/15 border border-white/25 backdrop-blur "}>
+                  {claseAhoraH ? "🔴 En clase ahora" : "⏭️ Próxima clase"}: {nomProxH} · {proximaClaseH.inicio}–{proximaClaseH.fin}
+                  {proximaClaseH.salon ? ` · ${proximaClaseH.salon}` : ""}
+                </div>
+              )}
             </div>
             <div className="flex flex-wrap gap-1.5 sm:gap-2 sm:justify-end">
               <button onClick={exportarJSON}
