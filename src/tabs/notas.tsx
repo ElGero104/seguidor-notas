@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 // Tab notas.tsx
 import { getSb, MiniDB, useDB } from "../db";
 import { uid } from "../db";

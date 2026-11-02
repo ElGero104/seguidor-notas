@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 // Tab pomodoro.tsx
 // ==================== POMODORO ====================
 

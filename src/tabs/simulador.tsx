@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 // Tab simulador.tsx
 // ==================== PESTAÑA SIMULADOR ====================
 

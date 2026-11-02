@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 // Tab recursos.tsx
 // ==================== RECURSOS POR MATERIA (hub de links) ====================
 
