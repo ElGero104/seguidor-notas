@@ -231,7 +231,7 @@ export async function pullCloud() {
 }
 
 // Generador de ids (UUID v4, compatible con las columnas uuid de Supabase)
-const uid = () =>
+export const uid = () =>
   (crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);

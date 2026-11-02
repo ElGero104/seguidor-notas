@@ -1,3 +1,6 @@
+import { getSb } from "./db";
+import { promedio } from "./calculos";
+import { Fade } from "./tema.tsx";
 import { useState, useEffect } from "react";
 import { useDB } from "./db";
 import { tokens } from "./tema.tsx";

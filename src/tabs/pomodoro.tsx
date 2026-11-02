@@ -1,6 +1,8 @@
 // Tab pomodoro.tsx
 // ==================== POMODORO ====================
 
+import { cardBase, Btn, FechaBadge } from "../tema.tsx";
+import { diasHasta } from "../calculos";
 const POM_KEY = "seguidor-notas-pomodoro";
 
 export default function TabPomodoro({ data, t }: any) {

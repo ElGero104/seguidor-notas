@@ -1,6 +1,14 @@
 // Tab calendario.tsx
 // ==================== PESTAÑA CALENDARIO ====================
 
+import { useState } from "react";
+import { MiniDB } from "../db";
+import { Materia, Nota, Clase, Evento, Recurso, Config } from "../types";
+import { diasHasta, diasMes } from "../calculos";
+import { DIAS, MESES, cardBase, Btn, FechaBadge, Fade } from "../tema.tsx";
+import { setUndo } from "../undo.tsx";
+import { exportarICS, importarICS } from "../exportar";
+import { abrirZoom } from "./horarios";
 /**
  * Calendario mensual de entregas: grilla de 7 columnas con navegación
  * de mes/año y los eventos (notas con fecha) resaltados por urgencia.

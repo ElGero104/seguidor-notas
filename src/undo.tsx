@@ -1,3 +1,4 @@
+import { useDB } from "./db";
 import { useState, useEffect } from "react";
 import { MiniDB, DB_SCHEMA } from "./db";
 

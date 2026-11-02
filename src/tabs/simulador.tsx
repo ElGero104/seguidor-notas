@@ -1,6 +1,10 @@
 // Tab simulador.tsx
 // ==================== PESTAÑA SIMULADOR ====================
 
+import { MiniDB } from "../db";
+import { Materia, Nota, Config } from "../types";
+import { promedio, calculo } from "../calculos";
+import { cardBase, inputBase, Fade, estadoTxt } from "../tema.tsx";
 /**
  * Simulador con objetivo configurable + panel "peso restante vs. riesgo":
  * prioriza materias por el margen entre su máximo alcanzable y la nota mínima.

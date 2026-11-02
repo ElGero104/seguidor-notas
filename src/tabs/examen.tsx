@@ -1,6 +1,8 @@
 // Tab examen.tsx
 // ==================== MODO EXAMEN ====================
 
+import { cardBase } from "../tema.tsx";
+import { diasHasta } from "../calculos";
 export default function TabExamen({ data, t }: any) {
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   const idsMat = new Set((data.materias as Materia[]).map((m) => m.id));

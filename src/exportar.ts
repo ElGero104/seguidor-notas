@@ -1,3 +1,5 @@
+import { getSb, sb, uid } from "./db";
+import { promedio } from "./calculos";
 import { MiniDB, DB_SCHEMA, CONFIG_DEFAULT } from "./db";
 import { Materia, Nota, Config } from "./types";
 import { diasHasta } from "./calculos";

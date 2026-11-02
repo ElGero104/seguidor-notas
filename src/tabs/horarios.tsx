@@ -1,15 +1,19 @@
 // Tab horarios.tsx
 // ==================== PESTAÑA HORARIOS ====================
 
+import { MiniDB, uid } from "../db";
+import { Materia, Clase, Recurso } from "../types";
+import { DIAS, cardBase, inputBase, Btn } from "../tema.tsx";
+import { setUndo } from "../undo.tsx";
 /** Extrae el meeting id y password de un link de Zoom. */
-function zoomParts(url: string) {
+export function zoomParts(url: string) {
   const m = url.match(/zoom\.us\/(?:j|my)\/(\d+)(?:[?&]pwd=([A-Za-z0-9]+))?/i);
   if (!m) return null;
   return { id: m[1], pwd: m[2] || "" };
 }
 
 /** Abre Zoom: primero intenta la app instalada (zoommtg://), si no, la web. */
-function abrirZoom(url: string) {
+export function abrirZoom(url: string) {
   const p = zoomParts(url);
   const link = p
     ? `zoommtg://zoom.us/join?confno=${p.id}${p.pwd ? "&pwd=" + p.pwd : ""}`

@@ -1,6 +1,11 @@
 // Tab inicio.tsx
 // ==================== PESTAÑA INICIO (DASHBOARD) ====================
 
+import { MiniDB } from "../db";
+import { Materia, Nota, Clase, Recurso, Config } from "../types";
+import { promedio, calculo, diasHasta } from "../calculos";
+import { DIAS, cardBase, Btn, FechaBadge, Fade, estadoBg, estadoTxt } from "../tema.tsx";
+import { abrirZoom } from "./horarios";
 /**
  * Dashboard de resumen: promedio general, % del semestre evaluado,
  * próximas entregas y materias que requieren atención — todo de un vistazo.

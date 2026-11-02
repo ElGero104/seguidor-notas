@@ -1,6 +1,14 @@
 // Tab materias.tsx
 // ==================== PESTAÑA MATERIAS ====================
 
+import { MiniDB, uid } from "../db";
+import { Materia, Nota, Config } from "../types";
+import { promedio, promedioSemestre, calculo } from "../calculos";
+import { COLORS, cardBase, inputBase, labelBase, Btn, FechaBadge, Fade, estadoBg, estadoTxt } from "../tema.tsx";
+import { setUndo } from "../undo.tsx";
+import { exportarCSV, exportarExcel } from "../exportar";
+import FormNota from "./notas";
+import RecursosMateria from "./recursos";
 /**
  * Vista de materias del SEMESTRE ACTIVO (se elige en el encabezado):
  * crear materias dentro de ese semestre, búsqueda, archivar/restaurar,

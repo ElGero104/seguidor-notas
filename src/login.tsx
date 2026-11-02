@@ -1,3 +1,4 @@
+import { labelBase } from "./tema.tsx";
 import { useState } from "react";
 import { getSb } from "./db";
 import { inputBase, Btn } from "./tema.tsx";

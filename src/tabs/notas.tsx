@@ -1,4 +1,11 @@
 // Tab notas.tsx
+import { getSb, MiniDB, useDB } from "../db";
+import { uid } from "../db";
+import { Materia, Nota, Config } from "../types";
+import { promedio, calculo, diasHasta } from "../calculos";
+import { cardBase, inputBase, labelBase, Btn, FechaBadge, estadoBg, estadoTxt, Fade } from "../tema.tsx";
+import { setUndo } from "../undo.tsx";
+import RecursosMateria from "./recursos";
 // ==================== PESTAÑA NOTAS (ESTRUCTURA DE EVALUACIÓN) ====================
 
 /**

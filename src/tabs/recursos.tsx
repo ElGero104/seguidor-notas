@@ -1,6 +1,9 @@
 // Tab recursos.tsx
 // ==================== RECURSOS POR MATERIA (hub de links) ====================
 
+import { MiniDB, uid } from "../db";
+import { Recurso } from "../types";
+import { inputBase, Btn } from "../tema.tsx";
 const REC_TIPOS: Record<string, string> = {
   link: "🔗", zoom: "🎥", drive: "📁", pdf: "📄", otro: "📎",
 };
