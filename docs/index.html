@@ -643,6 +643,52 @@ function exportarCSV(data: any) {
  * "Restaurar" valida el archivo, pide confirmación y reemplaza los datos
  * actuales (se puede deshacer durante 5 segundos desde el aviso).
  */
+/**
+ * Respaldo automático a la nube: guarda el estado completo como JSON en la
+ * tabla recursos (tipo "backup") del usuario. Se ejecuta al iniciar sesión y
+ * como máximo 1 vez por semana; conserva los últimos 4 respaldos.
+ */
+async function respaldoAutoNube() {
+  try {
+    const { data: s } = await getSb().auth.getSession();
+    const uidUser = s?.session?.user?.id;
+    if (!uidUser) return;
+    const sb = getSb();
+    const last = (await sb.from("recursos").select("titulo").eq("user_id", uidUser).eq("tipo", "backup").order("titulo", { ascending: false }).limit(1)).data?.[0];
+    const hoy = new Date().toISOString().slice(0, 10);
+    if (last && last.titulo.includes(hoy)) return; // ya hay respaldo de hoy
+    const payload = JSON.stringify({ app: "seguidor-notas", version: 1, fecha: new Date().toISOString(), db: JSON.parse(JSON.stringify(MiniDB.load())) });
+    await sb.from("recursos").insert({
+      id: uid(), user_id: uidUser, materia_id: null as any,
+      titulo: "respaldo-auto-" + hoy, url: payload, tipo: "backup",
+    });
+    // conservar solo los últimos 4
+    const todos = (await sb.from("recursos").select("id,titulo").eq("user_id", uidUser).eq("tipo", "backup").order("titulo", { ascending: false })).data || [];
+    const viejos = todos.slice(4).map((r: any) => r.id);
+    if (viejos.length) await sb.from("recursos").delete().in("id", viejos);
+  } catch {}
+}
+
+/** Descarga el último respaldo automático de la nube (si existe y es más reciente que el local). */
+async function restaurarAutoNubeSiMasReciente() {
+  try {
+    const { data: s } = await getSb().auth.getSession();
+    const uidUser = s?.session?.user?.id;
+    if (!uidUser) return false;
+    const sb = getSb();
+    const r = await sb.from("recursos").select("titulo,url").eq("user_id", uidUser).eq("tipo", "backup").order("titulo", { ascending: false }).limit(1);
+    const last = r.data?.[0] as any;
+    if (!last?.url) return false;
+    const p = JSON.parse(last.url);
+    const db = p && p.app === "seguidor-notas" && p.db ? p.db : null;
+    if (!db || !Array.isArray(db.materias)) return false;
+    const cfgR: Config = { ...CONFIG_DEFAULT, ...(db.config?.[0] || {}) };
+    const actual = { ...DB_SCHEMA, ...db, config: [cfgR] };
+    MiniDB.setCache(JSON.parse(JSON.stringify(actual)));
+    return true;
+  } catch { return false; }
+}
+
 function exportarJSON() {
   const respaldo = {
     app: "seguidor-notas",
@@ -2603,11 +2649,17 @@ function App() {
     getSb().auth.getSession().then(async ({ data }: any) => {
       setSesion(data.session);
       setAuthListo(true);
-      if (data.session) { pullCloud().then(() => refresh()); }
+      if (data.session) {
+        pullCloud().then(async () => {
+          // Respaldo automático en la nube (máx. 1/semana vía título por semana ISO)
+          respaldoAutoNube();
+          refresh();
+        });
+      }
     });
     const { data: sub } = getSb().auth.onAuthStateChange((_evt: any, s: any) => {
       setSesion(s);
-      if (s) { pullCloud().then(() => refresh()); }
+      if (s) { pullCloud().then(() => { respaldoAutoNube(); refresh(); }); }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
