@@ -19,70 +19,23 @@ jobs:
         with:
           node-version: 20
 
-      # La web compila el TSX en el navegador con Babel; este paso atrapa
-      # errores de sintaxis ANTES de que lleguen a GitHub Pages.
-      - name: Compilar src/App.tsx (verificación de sintaxis TSX)
-        run: npx --yes esbuild@0.24.0 src/App.tsx --outfile=/dev/null
-
-      - name: Verificar que docs/index.html está completo y coincide con src
+      # Compilar el bundle modular (atrapa errores de sintaxis/imports antes de Pages)
+      - name: Compilar bundle src/main.tsx -> docs/app.js
         run: |
-          # Extraer el TSX embebido en la web
-          awk '/<script type="text\/plain" id="tsx-source">/{f=1;next} f && /^<\/script>$/{f=0;next} f' docs/index.html > web.tsx
-          test -s web.tsx
+          npm install --no-save esbuild@0.24.0
+          node scripts/build-web.mjs
+
+      - name: Verificar que docs/index.html carga el bundle y estÃ¡ completo
+        run: |
+          grep -q 'src="./app.js"' docs/index.html
           grep -q '</html>' docs/index.html
-          # Debe contener el render de la app (detecta archivos truncados)
-          grep -q 'ReactDOM.createRoot(document.getElementById("root")).render(<App />);' web.tsx
-          # Paridad exacta: fuente de la web == src/App.tsx transformado + render
-          sed -e 's|^import React, { useState, useEffect } from "react";$|const { useState, useEffect } = React;|' \
-              -e 's|^export default function App() {$|function App() {|' src/App.tsx > base.tsx
-          printf '\n\nReactDOM.createRoot(document.getElementById("root")).render(<App />);\n\n' >> base.tsx
-          diff base.tsx web.tsx
-          # Compilar también el fuente embebido en la web
-          npx --yes esbuild@0.24.0 web.tsx --outfile=/dev/null
+          test -s docs/app.js
+          node --check docs/app.js
 
-      - name: Verificar PWA (manifest y service worker)
-        run: |
-          test -f docs/manifest.json
-          test -f docs/sw.js
-          node -e "JSON.parse(require('fs').readFileSync('docs/manifest.json','utf8')); console.log('manifest OK')"
-          node --check docs/sw.js
+      - name: Tests de fÃ³rmulas
+        run: node scripts/test-formulas.cjs
 
-      # Pruebas de las fórmulas puras: promedio ponderado, nota requerida,
-      # días hasta entrega, estado de nota y CRC32 del generador de Excel.
-      # (.cjs: el package.json del repo es "type": "module", y este test es CommonJS)
-      - name: Probar las fórmulas (promedio, nota requerida, CRC32)
-        run: set -o pipefail; node scripts/test-formulas.cjs 2>&1 | tee test-output.log
-        env:
-          # Permite que el test abra un issue de diagnóstico si falla.
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # Si el test falló, publica el log completo en el repo para poder
-      # diagnosticarlo sin acceso a los logs de Actions (que requieren
-      # autenticación). [skip ci] evita disparar otro run.
-      - name: Publicar log de diagnóstico si el test falló
-        if: failure()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # -f: el .gitignore del repo ignora *.log; forzar el add
-          git add -f test-output.log
-          git commit -m "chore: log de diagnóstico del test de fórmulas [skip ci]"
-          git push
-
-  # Restaura los iconos PNG de la PWA desde sus versiones base64 y los
-  # confirma al repo si cambiaron. Los iconos son binarios y no viajan por
-  # las herramientas de push de texto: se guardan como base64 (texto) y el
-  # CI los decodifica con `base64 -d`, siempre con el mismo resultado.
-  iconos:
-    needs: verificar
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Generar iconos PWA (decodificar base64)
+      - name: Iconos PWA
         run: |
           mkdir -p docs/icons
           base64 -d scripts/iconos/icon-192.png.b64 > docs/icons/icon-192.png
@@ -96,10 +49,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/icons
+          git add docs/app.js docs/icons
           if git diff --cached --quiet; then
-            echo "Iconos sin cambios"
+            echo "Sin cambios"
           else
-            git commit -m "chore: regenerar iconos PWA"
+            git commit -m "chore: regenerar bundle e iconos"
             git push
           fi
