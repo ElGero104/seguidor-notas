@@ -144,8 +144,8 @@ export default function TabCalendario({ data, t }: any) {
           const dd = diasHasta(fechaDe(d));
           return (
             <div key={d} onClick={() => setDiaSel(d)}
-              className={"aspect-[16/10] sm:aspect-[16/9] min-h-14 rounded-xl border p-1.5 sm:p-2 text-xs sm:text-sm cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 overflow-hidden " + t.group + (esHoy(d) ? " " + t.ring : "")}>
-              <div className={"font-extrabold text-sm sm:text-base mb-1 " + (esHoy(d) ? "text-indigo-500" : t.sub)}>{d}</div>
+              className={"min-h-16 sm:min-h-0 sm:aspect-[16/9] rounded-lg sm:rounded-xl border p-1 sm:p-2 text-[11px] sm:text-sm cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 overflow-hidden " + t.group + (esHoy(d) ? " " + t.ring : "")}>
+              <div className={"font-extrabold text-xs sm:text-base mb-0.5 sm:mb-1 " + (esHoy(d) ? "text-indigo-500" : t.sub)}>{d}</div>
               <div className="space-y-1">
                 {vista === "entregas" && evs.map((n) => {
                   const m = (data.materias as Materia[]).find((x) => x.id === n.materiaId);

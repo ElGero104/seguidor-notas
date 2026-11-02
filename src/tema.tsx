@@ -16,18 +16,18 @@ export function tokens(dark: boolean) {
       ? "bg-white/[0.04] border-white/10 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.35)]"
       : "bg-white/80 border-slate-200/80 backdrop-blur-xl shadow-[0_8px_30px_rgba(15,23,42,0.06)]",
     text: dark ? "text-slate-100" : "text-slate-800",
-    sub: dark ? "text-slate-400" : "text-slate-500",
-    faint: dark ? "text-slate-500" : "text-slate-400",
+    sub: dark ? "text-slate-300" : "text-slate-500",
+    faint: dark ? "text-slate-400" : "text-slate-400",
     input: dark
-      ? "bg-white/[0.06] border-white/10 text-slate-100 placeholder-slate-500 focus:border-indigo-400/60"
+      ? "bg-white/[0.08] border-white/15 text-slate-100 placeholder-slate-400 focus:border-indigo-400/60"
       : "bg-white border-slate-200 text-slate-800 placeholder-slate-400 focus:border-indigo-400",
     softBtn: dark
       ? "bg-indigo-400/15 text-indigo-300 hover:bg-indigo-400/25 border border-indigo-400/20"
       : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100",
     nav: dark ? "bg-[#0b1020]/80 border-white/10 backdrop-blur-xl" : "bg-white/80 border-slate-200/80 backdrop-blur-xl",
     navIn: dark ? "text-slate-300 hover:bg-white/10" : "text-slate-600 hover:bg-slate-100",
-    group: dark ? "bg-white/[0.03] border-white/10" : "bg-slate-50/80 border-slate-200/70",
-    groupCard: dark ? "bg-white/[0.05] border-white/10" : "bg-white border-slate-100",
+    group: dark ? "bg-white/[0.06] border-white/10 text-slate-200" : "bg-slate-50/80 border-slate-200/70",
+    groupCard: dark ? "bg-white/[0.07] border-white/10 text-slate-200" : "bg-white border-slate-100",
     ok: dark ? "text-emerald-400" : "text-emerald-600",
     okBg: dark ? "bg-emerald-400/15 text-emerald-300 border border-emerald-400/20" : "bg-emerald-50 text-emerald-700 border border-emerald-200",
     badBg: dark ? "bg-red-400/15 text-red-300 border border-red-400/20" : "bg-red-50 text-red-700 border border-red-200",
