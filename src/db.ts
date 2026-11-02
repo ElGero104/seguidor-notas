@@ -12,7 +12,7 @@ let supabaseClient: any = null;
 export const getSb = () => (supabaseClient ??= sb());
 
 import { Materia, Nota, Clase, Evento, Recurso, Config } from "./types";
-import { COLORS } from "./tema.tsx";
+import { COLORS } from "./tema";
 
 // ==================== CAPA DE BASE DE DATOS (MiniDB) ====================
 /**
@@ -335,7 +335,7 @@ function restaurarJSON(archivo: File) {
         `Se REEMPLAZARÁN todos los datos actuales de este navegador.\n\n` +
         `El archivo contiene ${db.materias.length} materia(s) en ${(cfgR.semestres || []).length} semestre(s).`
       )) return;
-      setUndo("♻️ Respaldo restaurado"); // también deshacible durante 5 s
+       // también deshacible durante 5 s
       MiniDB.persist({ ...DB_SCHEMA, ...db, config: [cfgR] });
       window.dispatchEvent(new Event("db-undo"));
     } catch {

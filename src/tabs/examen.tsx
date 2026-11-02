@@ -1,7 +1,8 @@
 // Tab examen.tsx
 // ==================== MODO EXAMEN ====================
 
-import { cardBase } from "../tema.tsx";
+import { Materia, Nota } from "../types";
+import { cardBase } from "../tema";
 import { diasHasta } from "../calculos";
 export default function TabExamen({ data, t }: any) {
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);

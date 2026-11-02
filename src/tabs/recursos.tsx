@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 
 import { MiniDB, uid } from "../db";
 import { Recurso } from "../types";
-import { inputBase, Btn } from "../tema.tsx";
+import { inputBase, Btn } from "../tema";
 const REC_TIPOS: Record<string, string> = {
   link: "🔗", zoom: "🎥", drive: "📁", pdf: "📄", otro: "📎",
 };

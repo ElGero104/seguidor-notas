@@ -1,7 +1,8 @@
-import { labelBase } from "./tema.tsx";
+import { labelBase } from "./tema";
+export const EMAIL_DOMAIN = "@udea.edu.co";
 import { useState } from "react";
 import { getSb } from "./db";
-import { inputBase, Btn } from "./tema.tsx";
+import { inputBase, Btn } from "./tema";
 
 // ==================== LOGIN (Supabase Auth por usuario) ====================
 

@@ -3,9 +3,9 @@ import { useState, useEffect } from "react";
 import { getSb, MiniDB, useDB } from "../db";
 import { uid } from "../db";
 import { Materia, Nota, Config } from "../types";
-import { promedio, calculo, diasHasta } from "../calculos";
-import { cardBase, inputBase, labelBase, Btn, FechaBadge, estadoBg, estadoTxt, Fade } from "../tema.tsx";
-import { setUndo } from "../undo.tsx";
+import { promedio, promedioSemestre, calculo, diasHasta } from "../calculos";
+import { cardBase, inputBase, labelBase, Btn, FechaBadge, estadoBg, estadoTxt, Fade } from "../tema";
+import { setUndo } from "../undo";
 import RecursosMateria from "./recursos";
 // ==================== PESTAÑA NOTAS (ESTRUCTURA DE EVALUACIÓN) ====================
 
@@ -68,7 +68,7 @@ export default function TabNotas({ data, refresh, t }: any) {
   }
 
   /** UPDATE inline: nombre / peso / valor / fecha (vacío -> pendiente). */
-  const editarNota = (id: string, campo: "nombre" | "porcentaje" | "valor" | "fecha", valor: string) => {
+  const editarNota = (id: string, campo: "nombre" | "porcentaje" | "valor" | "fecha" | "avisos", valor: string) => {
     const patch: any = {};
     if (campo === "nombre") patch.nombre = valor;
     if (campo === "porcentaje") patch.porcentaje = parseFloat(valor) || 0;

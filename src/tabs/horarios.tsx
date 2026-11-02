@@ -4,8 +4,8 @@ import { useState, useEffect } from "react";
 
 import { MiniDB, uid } from "../db";
 import { Materia, Clase, Recurso } from "../types";
-import { DIAS, cardBase, inputBase, Btn } from "../tema.tsx";
-import { setUndo } from "../undo.tsx";
+import { DIAS, cardBase, inputBase, Btn } from "../tema";
+import { setUndo } from "../undo";
 /** Extrae el meeting id y password de un link de Zoom. */
 export function zoomParts(url: string) {
   const m = url.match(/zoom\.us\/(?:j|my)\/(\d+)(?:[?&]pwd=([A-Za-z0-9]+))?/i);

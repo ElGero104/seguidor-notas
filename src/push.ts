@@ -48,11 +48,3 @@ export async function unsubscribeFromPush(): Promise<void> {
     await sub.unsubscribe();
   }
 }
-const sb = () =>
-  (typeof supabase !== "undefined" ? supabase : (window as any).supabase).createClient(
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY,
-    { auth: { persistSession: true, autoRefreshToken: true } }
-  );
-let supabaseClient: any = null;
-const getSb = () => (supabaseClient ??= sb());

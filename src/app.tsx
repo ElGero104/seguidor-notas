@@ -1,11 +1,12 @@
+import { Materia, Clase, Config } from "./types";
 import { getSb } from "./db";
 import { promedio } from "./calculos";
-import { Fade } from "./tema.tsx";
+import { Fade } from "./tema";
 import { useState, useEffect } from "react";
 import { useDB } from "./db";
-import { tokens } from "./tema.tsx";
+import { tokens } from "./tema";
 import { MiniDB, pullCloud, respaldoAutoNube } from "./db";
-import { UndoToast } from "./undo.tsx";
+import { UndoToast } from "./undo";
 import { subscribeToPush, unsubscribeFromPush } from "./push";
 import LoginInline from "./login";
 import TabDashboard from "./tabs/inicio";

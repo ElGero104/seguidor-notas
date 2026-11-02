@@ -3,6 +3,7 @@ export const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#3b82f6", "#
 export const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 export const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 import { Config } from "./types";
+import { diasHasta } from "./calculos";
 
 // ==================== TEMA (DARK MODE) ====================
 /** Tokens de clases Tailwind según el tema: la app pasa `t` a todos los componentes. */

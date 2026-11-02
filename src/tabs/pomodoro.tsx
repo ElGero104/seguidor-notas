@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 // Tab pomodoro.tsx
 // ==================== POMODORO ====================
 
-import { cardBase, Btn, FechaBadge } from "../tema.tsx";
+import { cardBase, Btn, FechaBadge } from "../tema";
+import { Materia, Nota } from "../types";
 import { diasHasta } from "../calculos";
 const POM_KEY = "seguidor-notas-pomodoro";
 
