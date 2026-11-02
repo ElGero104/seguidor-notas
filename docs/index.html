@@ -368,6 +368,22 @@ async function pullCloud() {
     (db.eventos as Evento[]) = eventos.map((e: any) => ({ id: e.id, titulo: e.titulo, fecha: e.fecha, hora: e.hora ?? undefined, lugar: e.lugar ?? undefined }));
     (db.recursos as Recurso[]) = recursos.map((r: any) => ({ id: r.id, materiaId: r.materia_id, titulo: r.titulo, url: r.url ?? "", tipo: r.tipo ?? "link" }));
     MiniDB.setCache(db);
+    // Reconstruir eventos AVISO:* desde las notas con avisos extra
+    try {
+      const sb = getSb();
+      for (const n of db.notas as Nota[]) {
+        if (n.fecha && (n.avisos || []).length) {
+          const prev = (await sb.from("eventos").select("id,titulo").eq("user_id", uidUser).ilike("titulo", `AVISO:${n.id}:%`)).data || [];
+          if (prev.length) await sb.from("eventos").delete().in("id", prev.map((p: any) => p.id));
+          for (const a of n.avisos || []) {
+            const delta = a === "-3d" ? 3 : 0;
+            const f = new Date(n.fecha + "T12:00:00");
+            f.setDate(f.getDate() - delta);
+            await sb.from("eventos").insert({ id: uid(), user_id: uidUser, titulo: `AVISO:${n.id}:${a}`, fecha: f.toISOString().slice(0, 10), hora: "08:00" });
+          }
+        }
+      }
+    } catch {}
   } catch {}
 }
 
@@ -1616,6 +1632,35 @@ function TabNotas({ data, refresh, t }: any) {
     refresh();
   };
 
+  /**
+   * Sincroniza los avisos extra de una nota como eventos "AVISO:<nota_id>:<delta>"
+   * en la tabla eventos (fecha = fecha de entrega - delta). Así notify-deadlines
+   * los envía sin necesidad de columna nueva.
+   */
+  async function syncAvisosEventos(notaId: string) {
+    try {
+      const { data: s } = await getSb().auth.getSession();
+      const uidUser = s?.session?.user?.id;
+      if (!uidUser) return;
+      const sb = getSb();
+      const n = MiniDB.find<Nota>("notas", (x) => x.id === notaId)[0];
+      if (!n || !n.fecha) return;
+      // borrar avisos previos de esta nota
+      const prev = (await sb.from("eventos").select("id,titulo").eq("user_id", uidUser).ilike("titulo", `AVISO:${notaId}:%`)).data || [];
+      if (prev.length) await sb.from("eventos").delete().in("id", prev.map((p: any) => p.id));
+      for (const a of n.avisos || []) {
+        const delta = a === "-3d" ? 3 : 0;
+        const f = new Date(n.fecha + "T12:00:00");
+        f.setDate(f.getDate() - delta);
+        await sb.from("eventos").insert({
+          id: uid(), user_id: uidUser,
+          titulo: `AVISO:${notaId}:${a}`,
+          fecha: f.toISOString().slice(0, 10), hora: "08:00",
+        });
+      }
+    } catch {}
+  }
+
   /** UPDATE inline: nombre / peso / valor / fecha (vacío -> pendiente). */
   const editarNota = (id: string, campo: "nombre" | "porcentaje" | "valor" | "fecha", valor: string) => {
     const patch: any = {};
@@ -1625,6 +1670,7 @@ function TabNotas({ data, refresh, t }: any) {
     if (campo === "fecha") patch.fecha = valor || undefined;
     if (campo === "avisos") patch.avisos = JSON.parse(valor || "[]");
     MiniDB.update<Nota>("notas", id, patch);
+    if (campo === "avisos" || campo === "fecha") syncAvisosEventos(id);
     refresh();
   };
 
