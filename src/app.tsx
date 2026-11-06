@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useDB } from "./db";
 import { tokens } from "./tema";
 import { MiniDB, pullCloud, respaldoAutoNube } from "./db";
-import { UndoToast } from "./undo";
+import { UndoToast, setUndo } from "./undo";
 import { subscribeToPush, unsubscribeFromPush } from "./push";
 import LoginInline from "./login";
 import TabDashboard from "./tabs/inicio";
@@ -123,6 +123,32 @@ export default function App() {
     refresh();
   };
 
+  // Eliminar CUALQUIER semestre (no solo el activo) con cascada completa
+  const borrarSemestreDe = (nombre: string) => {
+    const ms = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === nombre);
+    const idsMs = new Set(ms.map((m) => m.id));
+    const nNotas = (data.notas as any[]).filter((n) => idsMs.has(n.materiaId)).length;
+    const nTareas = (data.tareas as any[]).filter((t) => idsMs.has(t.materiaId)).length;
+    if (!confirm(`⚠️ ¿Eliminar "${nombre}" con ${ms.length} materia(s), ${nNotas} nota(s) y ${nTareas} tarea(s)?\n\nSe borrarán también sus horarios y recursos.\n\nPodrás deshacerlo durante 5 segundos con el aviso ↩️ Deshacer.`)) return;
+    setUndo("🗑️ Semestre eliminado");
+    ms.forEach((m) => {
+      MiniDB.remove("materias", m.id);
+      MiniDB.removeWhere("notas", (n) => n.materiaId === m.id);
+      MiniDB.removeWhere("clases", (c) => c.materiaId === m.id);
+      MiniDB.removeWhere("recursos", (r) => r.materiaId === m.id);
+      MiniDB.removeWhere("tareas", (t) => t.materiaId === m.id);
+    });
+    const restantes = (cfg.semestres || []).filter((s) => s !== nombre);
+    const arch = (cfg.archivados || []).filter((s) => s !== nombre);
+    MiniDB.saveConfig({
+      semestres: restantes,
+      archivados: arch,
+      activo: nombre === cfg.activo ? (restantes.slice().sort()[restantes.length - 1] || "") : cfg.activo,
+      fechasSemestre: Object.fromEntries(Object.entries(cfg.fechasSemestre || {}).filter(([k]) => k !== nombre)),
+    });
+    refresh();
+  };
+
   // Estadísticas del encabezado: solo el semestre activo
   const mats = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === cfg.activo);
   let suma = 0, peso = 0;
@@ -235,6 +261,18 @@ export default function App() {
               ))}
               <option value="__nuevo" className="text-slate-800">➕ Añadir semestre…</option>
             </select>
+            {semestres.length > 0 && (
+              <button
+                onClick={() => {
+                  const sel = prompt("🗑️ Escribe el nombre del semestre a eliminar:", cfg.activo);
+                  if (sel && semestres.includes(sel.trim())) borrarSemestreDe(sel.trim());
+                  else if (sel && !semestres.includes(sel.trim())) alert("⚠️ Ese semestre no existe.");
+                }}
+                className="text-lg rounded-xl px-2.5 py-1.5 border border-white/25 bg-white/10 hover:bg-red-500/30 transition"
+                title="Eliminar un semestre y todo su contenido">
+                🗑️
+              </button>
+            )}
           </div>
         </header>
 
