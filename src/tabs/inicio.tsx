@@ -74,10 +74,12 @@ export default function TabDashboard({ data, refresh, t, goTab }: any) {
   const cfg: Config = data.config[0];
   const mats = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === cfg.activo);
 
-  // Estado vacío: primera visita sin materias
+  // Estado vacío: primera visita sin materias (igual mostramos la barra del semestre)
   if (mats.length === 0) {
     return (
-      <Fade k="vacio">
+      <div className="space-y-5">
+        <BarraSemestre cfg={cfg} t={t} refresh={refresh} data={data} />
+        <Fade k="vacio">
         <div className={"rounded-3xl border-2 border-dashed p-10 text-center " + t.card}>
           <div className="text-5xl mb-3">🎓</div>
           <h2 className={"text-xl font-bold " + t.text}>¡Bienvenido a Seguidor de Notas!</h2>
@@ -88,7 +90,8 @@ export default function TabDashboard({ data, refresh, t, goTab }: any) {
           </p>
           <Btn t={t} onClick={() => goTab("materias")}>➕ Empezar</Btn>
         </div>
-      </Fade>
+        </Fade>
+      </div>
     );
   }
 
