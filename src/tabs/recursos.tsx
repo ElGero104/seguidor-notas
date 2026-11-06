@@ -5,8 +5,7 @@ import { useState, useRef } from "react";
 import { MiniDB, uid } from "../db";
 import { Recurso, Archivo } from "../types";
 import { inputBase, Btn } from "../tema";
-import { subirArchivo, eliminarArchivoStorage, descargarEnNavegador, iconoArchivo, tamanoLegible, esPrevisualizable } from "../storage";
-import VisorArchivo from "./visorArchivo";
+import { subirArchivo, eliminarArchivoStorage, descargarEnNavegador, iconoArchivo, tamanoLegible } from "../storage";
 const REC_TIPOS: Record<string, string> = {
   link: "🔗", zoom: "🎥", drive: "📁", pdf: "📄", otro: "📎",
 };
@@ -16,7 +15,6 @@ export default function RecursosMateria({ materiaId, data, refresh, t }: any) {
   const [url, setUrl] = useState("");
   const [tipo, setTipo] = useState<Recurso["tipo"]>("link");
   const [subiendo, setSubiendo] = useState(false);
-  const [visor, setVisor] = useState<Archivo | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const recursos = (data.recursos as Recurso[]).filter((r) => r.materiaId === materiaId);
   const archivos = (data.archivos as Archivo[]).filter((a) => a.materiaId === materiaId);
@@ -98,8 +96,8 @@ export default function RecursosMateria({ materiaId, data, refresh, t }: any) {
         {archivos.map((a) => (
           <div key={a.id} className="flex items-center gap-2 text-sm">
             <span>{iconoArchivo(a.extension)}</span>
-            <button onClick={() => esPrevisualizable(a.extension) ? setVisor(a) : descargarEnNavegador(a)}
-              className="text-indigo-500 hover:underline truncate text-left" title={esPrevisualizable(a.extension) ? `Ver ${a.nombre}` : `Descargar ${a.nombre}`}>
+            <button onClick={() => descargarEnNavegador(a)}
+              className="text-indigo-500 hover:underline truncate text-left" title={`Descargar ${a.nombre}`}>
               {a.nombre}
             </button>
             <span className={"text-[10px] " + t.faint}>{tamanoLegible(a.tamano)}</span>
@@ -116,7 +114,6 @@ export default function RecursosMateria({ materiaId, data, refresh, t }: any) {
         </Btn>
         <span className={"text-[10px] " + t.faint}>PDF, Word, Excel, imágenes, ZIP…</span>
       </div>
-      {visor && <VisorArchivo archivo={visor} t={t} onClose={() => setVisor(null)} refresh={refresh} />}
     </div>
   );
 }

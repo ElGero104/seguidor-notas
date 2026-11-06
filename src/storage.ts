@@ -98,39 +98,6 @@ export async function descargarVarios(archivos: Archivo[], onProgreso?: (i: numb
   }
 }
 
-/** Sobrescribe un archivo existente en Storage (para editar texto inline). */
-export async function guardarArchivoExistente(storagePath: string, contenido: string): Promise<boolean> {
-  try {
-    const blob = new Blob([contenido], { type: "text/plain" });
-    const { error } = await getSb().storage.from(BUCKET).upload(storagePath, blob, { upsert: true });
-    return !error;
-  } catch { return false; }
-}
-
-/** Lee el contenido de un archivo de texto como string. */
-export async function leerArchivoTexto(storagePath: string): Promise<string | null> {
-  try {
-    const blob = await descargarArchivo(storagePath);
-    if (!blob) return null;
-    return await blob.text();
-  } catch { return null; }
-}
-
-/** ¿Es un tipo de archivo editable como texto? */
-export function esEditable(ext: string): boolean {
-  return ["txt", "md", "csv", "json", "js", "ts", "tsx", "jsx", "html", "css", "xml", "yml", "yaml", "py", "java", "c", "cpp", "h", "sql", "sh", "log", ""].includes((ext || "").toLowerCase());
-}
-
-/** ¿Es previsualizable inline? */
-export function esPrevisualizable(ext: string): boolean {
-  const e = (ext || "").toLowerCase();
-  return ["pdf"].includes(e)
-    || ["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(e)
-    || ["mp4", "webm", "mov"].includes(e)
-    || ["mp3", "wav", "ogg"].includes(e)
-    || esEditable(e);
-}
-
 /** Ícono según la extensión del archivo. */
 export function iconoArchivo(ext: string): string {
   const e = (ext || "").toLowerCase();

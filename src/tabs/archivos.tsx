@@ -6,8 +6,7 @@ import { MiniDB } from "../db";
 import { Materia, Archivo, Config } from "../types";
 import { cardBase, Btn, Fade } from "../tema";
 import { setUndo } from "../undo";
-import { eliminarArchivoStorage, descargarEnNavegador, descargarVarios, iconoArchivo, tamanoLegible, esPrevisualizable } from "../storage";
-import VisorArchivo from "./visorArchivo";
+import { eliminarArchivoStorage, descargarEnNavegador, descargarVarios, iconoArchivo, tamanoLegible } from "../storage";
 
 /**
  * Vista de todos los archivos subidos a las materias del semestre activo,
@@ -17,7 +16,6 @@ export default function TabArchivos({ data, refresh, t }: any) {
   const cfg: Config = data.config[0];
   const [descargando, setDescargando] = useState(false);
   const [progreso, setProgreso] = useState("");
-  const [visor, setVisor] = useState<Archivo | null>(null);
 
   const mats = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === cfg.activo);
   const idsAct = new Set(mats.map((m) => m.id));
@@ -93,8 +91,8 @@ export default function TabArchivos({ data, refresh, t }: any) {
               {archs.map((a) => (
                 <div key={a.id} className={"flex items-center gap-2 rounded-lg px-3 py-2 text-sm " + t.groupCard}>
                   <span className="text-lg">{iconoArchivo(a.extension)}</span>
-                  <button onClick={() => esPrevisualizable(a.extension) ? setVisor(a) : descargarEnNavegador(a)}
-                    className="text-indigo-500 hover:underline truncate text-left font-medium" title={esPrevisualizable(a.extension) ? `Ver ${a.nombre}` : `Descargar ${a.nombre}`}>
+                  <button onClick={() => descargarEnNavegador(a)}
+                    className="text-indigo-500 hover:underline truncate text-left font-medium" title={`Descargar ${a.nombre}`}>
                     {a.nombre}
                   </button>
                   <span className={"text-[10px] uppercase font-bold px-1.5 py-0.5 rounded " + t.group}>{a.extension}</span>
@@ -108,8 +106,6 @@ export default function TabArchivos({ data, refresh, t }: any) {
           </div>
         </Fade>
       ))}
-
-      {visor && <VisorArchivo archivo={visor} t={t} onClose={() => setVisor(null)} refresh={refresh} />}
     </div>
   );
 }
