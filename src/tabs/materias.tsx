@@ -10,6 +10,7 @@ import { setUndo } from "../undo";
 import { exportarCSV, exportarExcel } from "../exportar";
 
 import RecursosMateria from "./recursos";
+import { eliminarArchivosMateria } from "../storage";
 /**
  * Vista de materias del SEMESTRE ACTIVO (se elige en el encabezado):
  * crear materias dentro de ese semestre, búsqueda, archivar/restaurar,
@@ -49,6 +50,8 @@ export default function TabMaterias({ data, refresh, t }: any) {
     MiniDB.removeWhere("clases", (c) => c.materiaId === id);
     MiniDB.removeWhere("recursos", (r) => r.materiaId === id);
     MiniDB.removeWhere("tareas", (t) => t.materiaId === id);
+    MiniDB.removeWhere("archivos", (a) => a.materiaId === id);
+    eliminarArchivosMateria(id);
     refresh();
   };
 
@@ -72,6 +75,8 @@ export default function TabMaterias({ data, refresh, t }: any) {
       MiniDB.removeWhere("clases", (c) => c.materiaId === m.id);
       MiniDB.removeWhere("recursos", (r) => r.materiaId === m.id);
       MiniDB.removeWhere("tareas", (t) => t.materiaId === m.id);
+      MiniDB.removeWhere("archivos", (a) => a.materiaId === m.id);
+      eliminarArchivosMateria(m.id);
     });
     const restantes = (cfg.semestres || []).filter((s) => s !== activo);
     MiniDB.saveConfig({

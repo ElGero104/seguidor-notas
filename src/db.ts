@@ -11,7 +11,7 @@ export const sb = () =>
 let supabaseClient: any = null;
 export const getSb = () => (supabaseClient ??= sb());
 
-import { Materia, Nota, Clase, Evento, Recurso, Tarea, Config } from "./types";
+import { Materia, Nota, Clase, Evento, Recurso, Tarea, Archivo, Config } from "./types";
 import { COLORS } from "./tema";
 
 // ==================== CAPA DE BASE DE DATOS (MiniDB) ====================
@@ -29,6 +29,7 @@ export const DB_SCHEMA = {
   eventos: [] as Evento[],
   recursos: [] as Recurso[],
   tareas: [] as Tarea[],
+  archivos: [] as Archivo[],
   config: [CONFIG_DEFAULT],
 };
 
@@ -100,6 +101,7 @@ const CLOUD_TABLES: Record<string, string> = {
   eventos: "eventos",
   recursos: "recursos",
   tareas: "tareas",
+  archivos: "archivos",
 };
 
 export function cloudRow(table: string, row: Row, userId: string) {
@@ -110,6 +112,7 @@ export function cloudRow(table: string, row: Row, userId: string) {
   if (table === "eventos") Object.assign(base, { titulo: row.titulo, fecha: row.fecha, hora: row.hora ?? null, lugar: row.lugar ?? null });
   if (table === "recursos") Object.assign(base, { materia_id: row.materiaId, titulo: row.titulo, url: row.url ?? "", tipo: row.tipo ?? "link" });
   if (table === "tareas") Object.assign(base, { materia_id: row.materiaId, titulo: row.titulo, descripcion: row.descripcion ?? null, fecha: row.fecha ?? null, completada: row.completada ?? false, creada: row.creada ?? new Date().toISOString() });
+  if (table === "archivos") Object.assign(base, { materia_id: row.materiaId, nombre: row.nombre, extension: row.extension, storage_path: row.storagePath, tamano: row.tamano ?? 0, subido: row.subido ?? new Date().toISOString() });
   return base;
 }
 
@@ -183,13 +186,14 @@ export async function pullCloud() {
     // Solo columnas necesarias (menos payload) y en paralelo
     const get = async (remote: string, cols: string) =>
       (await getSb().from(remote).select(cols).eq("user_id", uidUser)).data || [];
-    const [mats, notas, clases, eventos, recursos, tareas, sems, cfgRow] = await Promise.all([
+    const [mats, notas, clases, eventos, recursos, tareas, archivos, sems, cfgRow] = await Promise.all([
       get("materias", "id,nombre,profesor,creditos,color,semestre_nombre"),
       get("notas", "id,materia_id,nombre,puntaje,porcentaje,fecha"),
       get("clases", "id,materia_id,dia,inicio,fin,salon"),
       get("eventos", "id,titulo,fecha,hora,lugar"),
       get("recursos", "id,materia_id,titulo,url,tipo"),
       get("tareas", "id,materia_id,titulo,descripcion,fecha,completada,creada"),
+      get("archivos", "id,materia_id,nombre,extension,storage_path,tamano,subido"),
       get("semestres", "nombre,activo"),
       get("config_usuario", "dark,tema_auto,nota_minima,nota_ok,archivados,activo,semestres,fechas_semestre"),
     ]);
@@ -217,6 +221,7 @@ export async function pullCloud() {
     (db.eventos as Evento[]) = eventos.map((e: any) => ({ id: e.id, titulo: e.titulo, fecha: e.fecha, hora: e.hora ?? undefined, lugar: e.lugar ?? undefined }));
     (db.recursos as Recurso[]) = recursos.map((r: any) => ({ id: r.id, materiaId: r.materia_id, titulo: r.titulo, url: r.url ?? "", tipo: r.tipo ?? "link" }));
     (db.tareas as Tarea[]) = tareas.map((t: any) => ({ id: t.id, materiaId: t.materia_id, titulo: t.titulo, descripcion: t.descripcion ?? undefined, fecha: t.fecha ?? undefined, completada: t.completada ?? false, creada: t.creada ?? new Date().toISOString() }));
+    (db.archivos as Archivo[]) = archivos.map((a: any) => ({ id: a.id, materiaId: a.materia_id, nombre: a.nombre, extension: a.extension ?? "", storagePath: a.storage_path ?? "", tamano: a.tamano ?? 0, subido: a.subido ?? new Date().toISOString() }));
     MiniDB.setCache(db);
     // Reconstruir eventos AVISO:* desde las notas con avisos extra
     try {

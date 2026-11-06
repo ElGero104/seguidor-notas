@@ -50,6 +50,17 @@ export type Recurso = {
   tipo: "link" | "zoom" | "drive" | "pdf" | "otro";
 };
 
+// Archivo subido a Supabase Storage, organizado por materia
+export type Archivo = {
+  id: string;
+  materiaId: string;
+  nombre: string;       // nombre original del archivo
+  extension: string;    // pdf, docx, xlsx, png, etc.
+  storagePath: string;  // ruta en el bucket: apuntes/{userId}/{materiaId}/{id}-{nombre}
+  tamano: number;       // bytes
+  subido: string;       // ISO timestamp
+};
+
 // Tarea pendiente de una materia (trabajo, lectura, proyecto, etc.)
 export type Tarea = {
   id: string;
