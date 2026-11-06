@@ -6,7 +6,7 @@ import { MiniDB } from "../db";
 import { Materia, Archivo, Config } from "../types";
 import { cardBase, Btn, Fade } from "../tema";
 import { setUndo } from "../undo";
-import { eliminarArchivoStorage, descargarEnNavegador, descargarVarios, iconoArchivo, tamanoLegible, esPrevisualizable } from "../storage";
+import { eliminarArchivoStorage, descargarEnNavegador, descargarZipSemestre, descargarZipMateria, iconoArchivo, tamanoLegible, esPrevisualizable } from "../storage";
 import VisorArchivo from "./visorArchivo";
 
 /**
@@ -17,6 +17,7 @@ export default function TabArchivos({ data, refresh, t }: any) {
   const cfg: Config = data.config[0];
   const [descargando, setDescargando] = useState(false);
   const [progreso, setProgreso] = useState("");
+  const [zipMateria, setZipMateria] = useState<string | null>(null);
   const [visor, setVisor] = useState<Archivo | null>(null);
 
   const mats = (data.materias as Materia[]).filter((m) => (m.semestre || "Sin semestre") === cfg.activo);
@@ -37,13 +38,29 @@ export default function TabArchivos({ data, refresh, t }: any) {
     refresh();
   };
 
+  // Carpeta completa del semestre como ZIP con subcarpetas por materia
   const descargarTodo = async () => {
     if (archivos.length === 0) return;
     setDescargando(true);
-    setProgreso(`0/${archivos.length}`);
-    await descargarVarios(archivos, (i, total) => setProgreso(`${i}/${total}`));
+    setProgreso("Preparando…");
+    const ok = await descargarZipSemestre(
+      cfg.activo || "semestre",
+      porMateria.map((g) => ({ materiaNombre: g.m.nombre, archivos: g.archivos })),
+      (msg) => setProgreso(msg)
+    );
     setDescargando(false);
     setProgreso("");
+    if (!ok) alert("⚠️ No se pudo generar el ZIP");
+  };
+
+  // ZIP solo de una materia
+  const descargarMateria = async (materiaNombre: string, archs: Archivo[]) => {
+    setZipMateria(materiaNombre);
+    setProgreso("Preparando…");
+    const ok = await descargarZipMateria(materiaNombre, archs, (msg) => setProgreso(msg));
+    setZipMateria(null);
+    setProgreso("");
+    if (!ok) alert("⚠️ No se pudo generar el ZIP de la materia");
   };
 
   return (
@@ -60,7 +77,7 @@ export default function TabArchivos({ data, refresh, t }: any) {
           {archivos.length > 0 && (
             <div className="ml-auto">
               <Btn t={t} onClick={descargarTodo} disabled={descargando}>
-                {descargando ? `⏳ Descargando ${progreso}…` : `⬇️ Descargar carpeta completa (${archivos.length})`}
+                {descargando ? `⏳ ${progreso || "Generando ZIP…"}` : `📦 Descargar semestre como ZIP (${archivos.length} archivos)`}
               </Btn>
             </div>
           )}
@@ -88,6 +105,13 @@ export default function TabArchivos({ data, refresh, t }: any) {
               <span className="w-3 h-3 rounded-full" style={{ backgroundColor: m.color }} />
               <h3 className={"font-bold " + t.text}>{m.nombre}</h3>
               <span className={"text-xs " + t.faint}>· {archs.length} archivo{archs.length === 1 ? "" : "s"} · {tamanoLegible(archs.reduce((s, a) => s + (a.tamano || 0), 0))}</span>
+              <button
+                onClick={() => descargarMateria(m.nombre, archs)}
+                disabled={zipMateria !== null}
+                className={"ml-auto px-2.5 py-1 rounded-lg text-[10px] font-bold " + t.softBtn}
+                title={`Descargar ZIP con los archivos de ${m.nombre}`}>
+                {zipMateria === m.nombre ? "⏳…" : "📦 ZIP materia"}
+              </button>
             </div>
             <div className="space-y-1.5">
               {archs.map((a) => (

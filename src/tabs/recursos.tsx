@@ -5,7 +5,7 @@ import { useState, useRef } from "react";
 import { MiniDB, uid } from "../db";
 import { Recurso, Archivo } from "../types";
 import { inputBase, Btn } from "../tema";
-import { subirArchivo, eliminarArchivoStorage, descargarEnNavegador, iconoArchivo, tamanoLegible, esPrevisualizable } from "../storage";
+import { subirArchivo, eliminarArchivoStorage, descargarEnNavegador, descargarZipMateria, iconoArchivo, tamanoLegible, esPrevisualizable } from "../storage";
 import VisorArchivo from "./visorArchivo";
 const REC_TIPOS: Record<string, string> = {
   link: "🔗", zoom: "🎥", drive: "📁", pdf: "📄", otro: "📎",
@@ -16,6 +16,7 @@ export default function RecursosMateria({ materiaId, data, refresh, t }: any) {
   const [url, setUrl] = useState("");
   const [tipo, setTipo] = useState<Recurso["tipo"]>("link");
   const [subiendo, setSubiendo] = useState(false);
+  const [zip, setZip] = useState(false);
   const [visor, setVisor] = useState<Archivo | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const recursos = (data.recursos as Recurso[]).filter((r) => r.materiaId === materiaId);
@@ -114,6 +115,17 @@ export default function RecursosMateria({ materiaId, data, refresh, t }: any) {
         <Btn t={t} tone="soft" onClick={() => fileRef.current?.click()} disabled={subiendo}>
           {subiendo ? "⏳ Subiendo…" : "📤 Subir archivo"}
         </Btn>
+        {archivos.length > 0 && (
+          <Btn t={t} tone="soft" disabled={zip}
+            onClick={async () => {
+              setZip(true);
+              const nombre = (data.materias as any[]).find((m: any) => m.id === materiaId)?.nombre || "materia";
+              await descargarZipMateria(nombre, archivos);
+              setZip(false);
+            }}>
+            {zip ? "⏳…" : `📦 ZIP (${archivos.length})`}
+          </Btn>
+        )}
         <span className={"text-[10px] " + t.faint}>PDF, Word, Excel, imágenes, ZIP…</span>
       </div>
       {visor && <VisorArchivo archivo={visor} t={t} onClose={() => setVisor(null)} refresh={refresh} />}

@@ -1,6 +1,7 @@
 // ==================== SUPABASE STORAGE (ARCHIVOS POR MATERIA) ====================
 // Bucket "apuntes", estructura: {userId}/{materiaId}/{archivoId}-{nombre}
 
+import JSZip from "jszip";
 import { getSb } from "./db";
 import { Archivo } from "./types";
 
@@ -129,6 +130,77 @@ export function esPrevisualizable(ext: string): boolean {
     || ["mp4", "webm", "mov"].includes(e)
     || ["mp3", "wav", "ogg"].includes(e)
     || esEditable(e);
+}
+
+/** Descarga un ZIP con los archivos dados, organizados en subcarpetas por nombre de carpeta. */
+export async function descargarZip(
+  nombreZip: string,
+  grupos: { carpeta: string; archivos: { archivo: Archivo; blob: Blob }[] }[],
+  onProgreso?: (msg: string) => void
+): Promise<boolean> {
+  try {
+    const zip = new JSZip();
+    for (const g of grupos) {
+      const carpeta = zip.folder(g.carpeta) || zip;
+      for (const item of g.archivos) {
+        onProgreso?.(`Añadiendo ${g.carpeta}/${item.archivo.nombre}…`);
+        carpeta.file(item.archivo.nombre, item.blob);
+      }
+    }
+    onProgreso?.("Comprimiendo…");
+    const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" }, (meta) => {
+      onProgreso?.(`Comprimiendo… ${Math.round(meta.percent)}%`);
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nombreZip;
+    a.click();
+    URL.revokeObjectURL(url);
+    return true;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
+}
+
+/** Descarga todos los archivos de UNA materia como ZIP nombrado con la materia. */
+export async function descargarZipMateria(
+  materiaNombre: string,
+  archivos: Archivo[],
+  onProgreso?: (msg: string) => void
+): Promise<boolean> {
+  const safe = materiaNombre.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const blobs: { archivo: Archivo; blob: Blob }[] = [];
+  for (const a of archivos) {
+    onProgreso?.(`Descargando ${a.nombre}…`);
+    const blob = await descargarArchivo(a.storagePath);
+    if (blob) blobs.push({ archivo: a, blob });
+  }
+  if (!blobs.length) return false;
+  return descargarZip(`${safe}.zip`, [{ carpeta: safe, archivos: blobs }], onProgreso);
+}
+
+/** Descarga TODO el semestre como un ZIP con una subcarpeta por materia. */
+export async function descargarZipSemestre(
+  semestreNombre: string,
+  grupos: { materiaNombre: string; archivos: Archivo[] }[],
+  onProgreso?: (msg: string) => void
+): Promise<boolean> {
+  const safeSem = semestreNombre.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const gruposZip: { carpeta: string; archivos: { archivo: Archivo; blob: Blob }[] }[] = [];
+  for (const g of grupos) {
+    const safeMat = g.materiaNombre.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const archivos: { archivo: Archivo; blob: Blob }[] = [];
+    for (const a of g.archivos) {
+      onProgreso?.(`Descargando ${g.materiaNombre}/${a.nombre}…`);
+      const blob = await descargarArchivo(a.storagePath);
+      if (blob) archivos.push({ archivo: a, blob });
+    }
+    if (archivos.length) gruposZip.push({ carpeta: safeMat, archivos });
+  }
+  if (!gruposZip.length) return false;
+  return descargarZip(`${safeSem}.zip`, gruposZip, onProgreso);
 }
 
 /** Ícono según la extensión del archivo. */
