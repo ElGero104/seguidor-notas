@@ -133,6 +133,14 @@ export default function App() {
   ];
   const tabInfo = (id: string) => tabs.find((x) => x.id === id)!;
   const [grupoAbierto, setGrupoAbierto] = useState<string | null>(null);
+  useEffect(() => {
+    if (!grupoAbierto) return;
+    const cerrar = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-grupo-menu]")) setGrupoAbierto(null);
+    };
+    document.addEventListener("mousedown", cerrar);
+    return () => document.removeEventListener("mousedown", cerrar);
+  }, [grupoAbierto]);
 
   // Semestres registrados + selector del semestre activo (único visible)
   const semestres: string[] = cfg.semestres || [];
@@ -273,7 +281,7 @@ export default function App() {
                   style={{ backgroundColor: cfg.color_app || "#6366f1" }}
                   title="Cambiar color de la app" />
                 {menuColor && (
-                  <div className="absolute right-0 top-full mt-2 p-2 rounded-xl border shadow-xl z-50 flex gap-1.5 bg-white dark:bg-slate-800"
+                  <div className="absolute right-0 top-full mt-2 p-2 rounded-xl border shadow-xl z-[120] flex gap-1.5 bg-white dark:bg-slate-800"
                     onMouseLeave={() => setMenuColor(false)}>
                     {PALETA_APP.map((p) => (
                       <button key={p.hex} onClick={() => { MiniDB.saveConfig({ color_app: p.hex }); setMenuColor(false); refresh(); }}
@@ -333,7 +341,8 @@ export default function App() {
         </header>
 
         {/* --- Navegación superior (solo escritorio) --- */}
-        <nav className={"hidden md:flex flex-wrap gap-1.5 mb-6 rounded-2xl p-1.5 border shadow-lg w-fit mx-auto relative " + t.nav}>
+        <nav data-grupo-menu className={"hidden md:block sticky top-2 z-[100] mb-6 rounded-2xl border shadow-lg " + t.nav}>
+          <div className="flex items-center gap-1 p-1.5 w-fit mx-auto">
           {GRUPOS.map((g) => {
             const activo = g.ids.includes(tab);
             return (
@@ -345,14 +354,13 @@ export default function App() {
                   <span className={"text-[9px] transition-transform " + (grupoAbierto === g.nombre ? "rotate-180" : "")}>▼</span>
                 </button>
                 {grupoAbierto === g.nombre && (
-                  <div className={"absolute top-full left-0 mt-1 p-1.5 rounded-xl border shadow-xl z-40 flex flex-col gap-0.5 min-w-[160px] " + t.card}
-                    onMouseLeave={() => setGrupoAbierto(null)}>
+                  <div className={"absolute top-full left-1/2 -translate-x-1/2 mt-2 p-1.5 rounded-2xl border shadow-2xl z-[110] flex flex-col gap-0.5 min-w-[170px] " + (darkEfectivo ? "bg-[#151b2e] border-white/10" : "bg-white border-slate-200")}>
                     {g.ids.map((id) => {
                       const x = tabInfo(id);
                       return (
                         <button key={id} onClick={() => { setTab(id as any); setGrupoAbierto(null); }}
-                          className={"px-3 py-2 rounded-lg text-sm font-medium text-left transition-all flex items-center gap-2 " +
-                            (tab === id ? t.softBtn : t.navIn)}>
+                          className={"px-3 py-2 rounded-lg text-sm font-medium text-left transition-all flex items-center gap-2 whitespace-nowrap " +
+                            (tab === id ? t.softBtn : (darkEfectivo ? "text-slate-200 hover:bg-white/10" : "text-slate-700 hover:bg-slate-100"))}>
                           <span>{x.icon}</span> {x.label}
                         </button>
                       );
@@ -362,6 +370,7 @@ export default function App() {
               </div>
             );
           })}
+          </div>
         </nav>
 
         {/* Animación de entrada al cambiar de pestaña */}

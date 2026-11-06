@@ -312,7 +312,7 @@ export default function TabCalendario({ data, t }: any) {
 
       {/* Detalle del día seleccionado */}
       {diaSel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setDiaSel(null)}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4" onClick={() => setDiaSel(null)}>
           <div className={cardBase + " " + t.card + " w-full max-w-md max-h-[80vh] overflow-auto"} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h2 className={"text-lg font-bold " + t.text}>
