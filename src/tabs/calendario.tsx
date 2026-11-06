@@ -221,7 +221,7 @@ export default function TabCalendario({ data, t }: any) {
                         <div key={n.id} title={`${m?.nombre ?? ""} · ${n.nombre}`}
                           className="truncate rounded px-1 py-px text-[10px]"
                           style={{ background: (m?.color ?? "#64748b") + "33", borderLeft: `2px solid ${m?.color ?? "#64748b"}` }}>
-                          {n.nombre.slice(0, 12)}
+                          {(n.nombre || "—").slice(0, 12)}
                         </div>
                       );
                     })}
@@ -229,7 +229,7 @@ export default function TabCalendario({ data, t }: any) {
                       <div key={ev.id} title={ev.titulo}
                         className="truncate rounded px-1 py-px text-[10px]"
                         style={{ background: "rgba(99,102,241,0.25)", borderLeft: "2px solid #6366f1" }}>
-                        {ev.titulo.slice(0, 12)}
+                        {(ev.titulo || "—").slice(0, 12)}
                       </div>
                     ))}
                     {vista === "clases" && evs.map((c: any) => {
@@ -238,7 +238,7 @@ export default function TabCalendario({ data, t }: any) {
                         <div key={c.id} title={`${m?.nombre ?? ""} · ${c.inicio}`}
                           className="truncate rounded px-1 py-px text-[10px]"
                           style={{ background: (m?.color ?? "#64748b") + "22", borderLeft: `2px solid ${m?.color ?? "#64748b"}` }}>
-                          🕐 {c.inicio} {m?.nombre.slice(0, 8) ?? "—"}
+                          🕐 {c.inicio} {(m?.nombre || "—").slice(0, 8)}
                         </div>
                       );
                     })}
@@ -263,11 +263,11 @@ export default function TabCalendario({ data, t }: any) {
               <div key={f} onClick={() => setDiaSel(f)}
                 className={cardBase + " " + t.card + " !p-3 flex gap-3 cursor-pointer hover:-translate-y-0.5 transition-all " + bgUrg + (esHoy(f) ? " " + t.ring : "")}>
                 <div className="text-center min-w-[52px]">
-                  <div className={"text-[10px] uppercase font-bold " + t.faint}>{dow.slice(0, 3)}</div>
+                  <div className={"text-[10px] uppercase font-bold " + t.faint}>{(dow || "").slice(0, 3)}</div>
                   <div className={"text-2xl font-extrabold " + (esHoy(f) ? "text-indigo-500" : urg === "vencida" ? "text-red-500" : t.text)}>
                     {d.getDate()}
                   </div>
-                  <div className={"text-[10px] " + t.faint}>{MESES[d.getMonth()].slice(0, 3)}</div>
+                  <div className={"text-[10px] " + t.faint}>{(MESES[d.getMonth()] || "").slice(0, 3)}</div>
                 </div>
                 <div className="flex-1 min-w-0 space-y-1">
                   {evs.length === 0 && (eventosPorFecha[f] || []).length === 0 && (
