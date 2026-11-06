@@ -2,11 +2,11 @@
  * Service Worker de Seguidor de Notas (PWA).
  *
  * Estrategia:
- *  - Navegación (la app): red primero, caché como respaldo -> siempre la
- *    última versión publicada, y funciona sin internet.
- *  - CDNs e iconos: caché primero + actualización en segundo plano.
+ *  - Navegación y recursos propios (app.js, etc.): red primero -> siempre
+ *    la última versión publicada; caché solo como respaldo sin internet.
+ *  - CDNs externos e iconos: caché primero + actualización en segundo plano.
  */
-var CACHE = "seguidor-notas-v2";
+var CACHE = "seguidor-notas-v3";
 var PRECACHE = [
   "./",
   "./index.html",
@@ -58,7 +58,26 @@ self.addEventListener("fetch", function (e) {
     return;
   }
 
-  // Resto (CDNs, iconos): caché primero, actualizando en segundo plano
+  // Recursos propios (app.js, sw.js, manifest): RED PRIMERO para siempre
+  // tener la última versión del bundle; caché solo como respaldo offline.
+  var url = new URL(e.request.url);
+  var esPropio = url.origin === self.location.origin && !url.pathname.startsWith("/icons/");
+  if (esPropio) {
+    e.respondWith(
+      fetch(e.request)
+        .then(function (r) {
+          if (r && r.ok) {
+            var cl = r.clone();
+            caches.open(CACHE).then(function (c) { c.put(e.request, cl); });
+          }
+          return r;
+        })
+        .catch(function () { return caches.match(e.request); })
+    );
+    return;
+  }
+
+  // Solo CDNs externos e iconos: caché primero, actualizando en segundo plano
   e.respondWith(
     caches.match(e.request).then(function (m) {
       var net = fetch(e.request)
