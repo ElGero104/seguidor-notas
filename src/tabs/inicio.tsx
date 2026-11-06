@@ -8,9 +8,30 @@ import { DIAS, cardBase, Btn, FechaBadge, Fade, estadoBg, estadoTxt } from "../t
 import { abrirZoom } from "./horarios";
 
 /** Barra de progreso del semestre: % transcurrido entre fecha de inicio y fin. */
-function BarraSemestre({ cfg, t }: any) {
+function BarraSemestre({ cfg, t, refresh, data }: any) {
   const rango = (cfg.fechasSemestre || {})[cfg.activo];
-  if (!rango || !rango.inicio || !rango.fin) return null;
+  // Sin fechas: mostrar aviso con botón para configurarlas rápido
+  if (!rango || !rango.inicio || !rango.fin) {
+    return (
+      <div className={cardBase + " " + t.card + " flex flex-wrap items-center gap-3"}>
+        <span className={"text-sm " + t.sub}>📅 Agrega las fechas de <strong>{cfg.activo}</strong> para ver el progreso del semestre</span>
+        <button
+          onClick={() => {
+            const ini = prompt("📅 Fecha de inicio del semestre (AAAA-MM-DD):", rango?.inicio || "");
+            if (ini === null) return;
+            const fin = prompt("📅 Fecha de fin del semestre (AAAA-MM-DD):", rango?.fin || "");
+            if (fin === null) return;
+            const v = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s.trim()) ? s.trim() : "";
+            if (!v(ini) || !v(fin)) { alert("⚠️ Ingresa fechas válidas en formato AAAA-MM-DD"); return; }
+            MiniDB.saveConfig({ fechasSemestre: { ...(cfg.fechasSemestre || {}), [cfg.activo]: { inicio: v(ini), fin: v(fin) } } });
+            refresh();
+          }}
+          className={"ml-auto px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-500 transition"}>
+          ➕ Configurar fechas
+        </button>
+      </div>
+    );
+  }
   const inicio = new Date(rango.inicio + "T00:00:00");
   const fin = new Date(rango.fin + "T00:00:00");
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
@@ -131,7 +152,7 @@ export default function TabDashboard({ data, refresh, t, goTab }: any) {
 
   return (
     <div className="space-y-5">
-      <BarraSemestre cfg={cfg} t={t} />
+      <BarraSemestre cfg={cfg} t={t} refresh={refresh} data={data} />
 
       {/* --- Vista HOY: agenda completa del día --- */}
       <Fade k="hoy">

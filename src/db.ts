@@ -20,7 +20,7 @@ import { COLORS } from "./tema";
  * localStorage ya no se usa para datos; solo queda la sesión de Auth y el
  * contador de sesiones Pomodoro.
  */
-export const CONFIG_DEFAULT: Config = { dark: false, tema_auto: false, nota_minima: 3.0, nota_ok: 4.0, archivados: [], activo: "", semestres: [], fechasSemestre: {} };
+export const CONFIG_DEFAULT: Config = { dark: false, tema_auto: true, nota_minima: 3.0, nota_ok: 4.0, archivados: [], activo: "", semestres: [], fechasSemestre: {} };
 
 export const DB_SCHEMA = {
   materias: [] as Materia[],
@@ -138,7 +138,7 @@ export async function syncConfigCloud(cfg: Config) {
     await getSb().from("config_usuario").upsert({
       user_id: uidUser,
       dark: cfg.dark,
-      tema_auto: cfg.tema_auto ?? false,
+      tema_auto: cfg.tema_auto ?? true,
       nota_minima: cfg.nota_minima,
       nota_ok: cfg.nota_ok,
       archivados: cfg.archivados,
@@ -202,7 +202,7 @@ export async function pullCloud() {
       db.config[0] = {
         ...db.config[0],
         dark: cfgRow[0].dark,
-        tema_auto: cfgRow[0].tema_auto ?? false,
+        tema_auto: cfgRow[0].tema_auto ?? true,
         nota_minima: cfgRow[0].nota_minima,
         nota_ok: cfgRow[0].nota_ok,
         archivados: cfgRow[0].archivados || [],

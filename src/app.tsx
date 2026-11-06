@@ -79,12 +79,12 @@ export default function App() {
     mq.addEventListener("change", h);
     return () => mq.removeEventListener("change", h);
   }, []);
-  const darkEfectivo = (cfg.tema_auto ?? false) ? darkSistema : cfg.dark;
+  const darkEfectivo = (cfg.tema_auto ?? true) ? darkSistema : cfg.dark;
   const t = tokens(darkEfectivo);
 
   // Ciclo de 3 estados: auto -> claro -> oscuro -> auto
   const toggleTema = () => {
-    const auto = cfg.tema_auto ?? false;
+    const auto = cfg.tema_auto ?? true;
     if (auto) {
       MiniDB.saveConfig({ tema_auto: false, dark: false }); // -> claro
     } else if (!cfg.dark) {
@@ -94,8 +94,8 @@ export default function App() {
     }
     refresh();
   };
-  const temaIcon = (cfg.tema_auto ?? false) ? "🌓" : cfg.dark ? "☀️" : "🌙";
-  const temaTitle = (cfg.tema_auto ?? false) ? "Tema: automático (sistema) — clic para claro" : cfg.dark ? "Tema: oscuro — clic para automático" : "Tema: claro — clic para oscuro";
+  const temaIcon = (cfg.tema_auto ?? true) ? "🌓" : cfg.dark ? "☀️" : "🌙";
+  const temaTitle = (cfg.tema_auto ?? true) ? "Tema: automático (sistema) — clic para claro" : cfg.dark ? "Tema: oscuro — clic para automático" : "Tema: claro — clic para oscuro";
 
   const [pushOn, setPushOn] = useState(false);
   useEffect(() => {
