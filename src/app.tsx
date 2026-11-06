@@ -68,9 +68,34 @@ export default function App() {
   };
 
   const cfg: Config = data.config[0];
-  const t = tokens(!!cfg.dark);
+  // Tema efectivo: si tema_auto, seguir prefers-color-scheme del sistema
+  const [darkSistema, setDarkSistema] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+  );
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const h = (e: MediaQueryListEvent) => setDarkSistema(e.matches);
+    mq.addEventListener("change", h);
+    return () => mq.removeEventListener("change", h);
+  }, []);
+  const darkEfectivo = (cfg.tema_auto ?? false) ? darkSistema : cfg.dark;
+  const t = tokens(darkEfectivo);
 
-  const toggleDark = () => { MiniDB.saveConfig({ dark: !cfg.dark }); refresh(); };
+  // Ciclo de 3 estados: auto -> claro -> oscuro -> auto
+  const toggleTema = () => {
+    const auto = cfg.tema_auto ?? false;
+    if (auto) {
+      MiniDB.saveConfig({ tema_auto: false, dark: false }); // -> claro
+    } else if (!cfg.dark) {
+      MiniDB.saveConfig({ tema_auto: false, dark: true }); // -> oscuro
+    } else {
+      MiniDB.saveConfig({ tema_auto: true, dark: darkSistema }); // -> auto
+    }
+    refresh();
+  };
+  const temaIcon = (cfg.tema_auto ?? false) ? "🌓" : cfg.dark ? "☀️" : "🌙";
+  const temaTitle = (cfg.tema_auto ?? false) ? "Tema: automático (sistema) — clic para claro" : cfg.dark ? "Tema: oscuro — clic para automático" : "Tema: claro — clic para oscuro";
 
   const [pushOn, setPushOn] = useState(false);
   useEffect(() => {
@@ -175,7 +200,7 @@ export default function App() {
   if (!sesion) return <LoginInline t={tokens(false)} />;
 
   return (
-    <div className={"min-h-screen " + t.page + " transition-colors" + (cfg.dark ? " dark" : "")}>
+    <div className={"min-h-screen " + t.page + " transition-colors" + (darkEfectivo ? " dark" : "")}>
       <div className={"w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-8 " + (tab === "calendario" ? "max-w-6xl" : "max-w-4xl")}>
         {/* --- Encabezado hero con degradado --- */}
         <header className={"relative overflow-hidden rounded-[1.5rem] sm:rounded-[2rem] mb-6 p-5 sm:p-10 text-white shadow-2xl shadow-indigo-900/20 bg-gradient-to-br " + t.hero}>
@@ -227,10 +252,10 @@ export default function App() {
                   📲
                 </button>
               )}
-              <button onClick={toggleDark}
+              <button onClick={toggleTema}
                 className="text-xl sm:text-2xl rounded-xl px-2.5 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
-                title={cfg.dark ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}>
-                {cfg.dark ? "☀️" : "🌙"}
+                title={temaTitle}>
+                {temaIcon}
               </button>
             </div>
           </div>

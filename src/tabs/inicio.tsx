@@ -6,6 +6,45 @@ import { Materia, Nota, Clase, Recurso, Config } from "../types";
 import { promedio, calculo, diasHasta } from "../calculos";
 import { DIAS, cardBase, Btn, FechaBadge, Fade, estadoBg, estadoTxt } from "../tema";
 import { abrirZoom } from "./horarios";
+
+/** Barra de progreso del semestre: % transcurrido entre fecha de inicio y fin. */
+function BarraSemestre({ cfg, t }: any) {
+  const rango = (cfg.fechasSemestre || {})[cfg.activo];
+  if (!rango || !rango.inicio || !rango.fin) return null;
+  const inicio = new Date(rango.inicio + "T00:00:00");
+  const fin = new Date(rango.fin + "T00:00:00");
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  if (isNaN(inicio.getTime()) || isNaN(fin.getTime()) || fin <= inicio) return null;
+  const total = fin.getTime() - inicio.getTime();
+  const transcurrido = hoy.getTime() - inicio.getTime();
+  const pct = Math.max(0, Math.min(100, Math.round((transcurrido / total) * 100)));
+  const diasTotales = Math.round(total / 86400000);
+  const diasTranscurridos = Math.max(0, Math.round(transcurrido / 86400000));
+  const diasRestantes = Math.max(0, Math.round((fin.getTime() - hoy.getTime()) / 86400000));
+  const semTranscurridas = Math.floor(diasTranscurridos / 7);
+  const semTotales = Math.ceil(diasTotales / 7);
+  return (
+    <div className={cardBase + " " + t.card}>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className={"font-bold text-sm " + t.text}>📅 Progreso del semestre · {cfg.activo}</h2>
+        <span className={"text-sm font-extrabold " + (pct >= 100 ? t.ok : pct >= 75 ? "text-amber-500" : t.text)}>{pct}%</span>
+      </div>
+      <div className={"h-3 rounded-full overflow-hidden " + t.group}>
+        <div
+          className={"h-full rounded-full transition-all duration-700 " + (pct >= 100 ? "bg-emerald-500" : "bg-gradient-to-r from-indigo-500 to-violet-500")}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className={"flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs " + t.faint}>
+        <span>🗓️ {rango.inicio} → {rango.fin}</span>
+        <span>⏳ Semana {Math.min(semTranscurridas + (diasTranscurridos % 7 > 0 ? 1 : 0), semTotales)} de {semTotales}</span>
+        <span>📆 {diasRestantes} días restantes</span>
+        {pct >= 100 && <span className={t.ok + " font-bold"}>✅ ¡Semestre terminado!</span>}
+        {hoy < inicio && <span className="text-amber-500 font-bold">⏸️ Aún no empieza</span>}
+      </div>
+    </div>
+  );
+}
 /**
  * Dashboard de resumen: promedio general, % del semestre evaluado,
  * próximas entregas y materias que requieren atención — todo de un vistazo.
@@ -92,6 +131,8 @@ export default function TabDashboard({ data, refresh, t, goTab }: any) {
 
   return (
     <div className="space-y-5">
+      <BarraSemestre cfg={cfg} t={t} />
+
       {/* --- Vista HOY: agenda completa del día --- */}
       <Fade k="hoy">
         <div className={cardBase + " " + t.card}>
