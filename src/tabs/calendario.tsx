@@ -15,8 +15,8 @@ export default function TabCalendario({ data, t }: any) {
   const [mes, setMes] = useState(hoy.getMonth());
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [diaSel, setDiaSel] = useState<string | null>(null); // "YYYY-MM-DD"
-  const [vista, setVista] = useState<"entregas" | "clases">("entregas");
-  const [modo, setModo] = useState<"mes" | "semana">("mes");
+  const [vista, setVista] = useState<"entregas" | "clases">("clases");
+  const [modo, setModo] = useState<"mes" | "semana">("semana");
 
   const pad = (n: number) => String(n).padStart(2, "0");
   const fechaStr = (a: number, m: number, d: number) => `${a}-${pad(m + 1)}-${pad(d)}`;
