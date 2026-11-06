@@ -45,27 +45,21 @@ export default function TabCalendario({ data, t }: any) {
   }, [data.eventos]);
 
   const rango = (cfg.fechasSemestre || {})[cfg.activo] || { inicio: "", fin: "" };
+  // Clases recurrentes por fecha en un rango amplio (mes ± 6 semanas),
+  // un solo loop sin duplicados: cada fecha se visita una vez.
   const clasesPorFecha = useMemo(() => {
     const map: Record<string, Clase[]> = {};
+    const centro = new Date(anio, mes, 15);
+    const inicio = new Date(centro); inicio.setDate(inicio.getDate() - 42);
+    const fin = new Date(centro); fin.setDate(fin.getDate() + 42);
     (data.clases as Clase[]).forEach((c) => {
       if (!idsAct.has(c.materiaId)) return;
-      const [a0, m0] = [anio, mes];
-      for (let d = 1; d <= diasMes(a0, m0); d++) {
-        const f = fechaStr(a0, m0, d);
-        if (rango.inicio && f < rango.inicio) continue;
-        if (rango.fin && f > rango.fin) continue;
-        const diaSem = (new Date(a0, m0, d).getDay() + 6) % 7;
-        if (diaSem === c.dia) (map[f] = map[f] || []).push(c);
-      }
-      // también semana siguiente/anterior para la vista semana
-      for (let offset = -7; offset <= 14; offset++) {
-        const dt = new Date(a0, m0, 1 + offset);
+      for (let dt = new Date(inicio); dt <= fin; dt.setDate(dt.getDate() + 1)) {
         const f = fechaStr(dt.getFullYear(), dt.getMonth(), dt.getDate());
         if (rango.inicio && f < rango.inicio) continue;
         if (rango.fin && f > rango.fin) continue;
-        const diaSem = (dt.getDay() + 6) % 7;
-        if (diaSem === c.dia && !map[f]) (map[f] = []).push(c);
-        else if (diaSem === c.dia) map[f].push(c);
+        const diaSem = (dt.getDay() + 6) % 7; // 0 = Lunes
+        if (diaSem === c.dia) (map[f] = map[f] || []).push(c);
       }
     });
     return map;
