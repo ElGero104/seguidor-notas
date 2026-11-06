@@ -11,6 +11,8 @@ Mini app de React para el seguimiento académico universitario.
 - **🌙 Tema oscuro**: conmutable y persistente.
 - **🗓️ Horarios**: clases por día, hora y salón en un horario semanal visual.
 - **🗄️ MiniDB**: capa de base de datos embebida (CRUD: `insert`, `find`, `update`, `remove`, `removeWhere`) con persistencia automática en `localStorage`, intercambiable por un backend real.
+- **✅ Tareas**: to-do por materia con fecha límite opcional, badges de vencimiento (vencida/hoy/en X días), filtros por materia y vista "Hoy". Se elimina en cascada al borrar materia o semestre.
+- **📊 Estadísticas**: gráficos SVG sin dependencias — evolución de notas por materia (línea temporal), distribución de créditos (dona), histograma de calificaciones e historial comparativo de promedio entre semestres.
 - **🔔 Notificaciones push**: activa desde el encabezado (botón 🔔). Recibe avisos 1 día antes de cada entrega y 10 min antes de cada clase, incluso con la app cerrada. Backend en Supabase (Edge Functions + pg_cron + Web Push/VAPID); la clave privada VAPID nunca sale del servidor.
 - **🔐 Login por usuario**: acceso con usuario (ej: `geronimo.patino`) y clave vía Supabase Auth; datos sincronizados por usuario con RLS.
 

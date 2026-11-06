@@ -50,6 +50,17 @@ export type Recurso = {
   tipo: "link" | "zoom" | "drive" | "pdf" | "otro";
 };
 
+// Tarea pendiente de una materia (trabajo, lectura, proyecto, etc.)
+export type Tarea = {
+  id: string;
+  materiaId: string;
+  titulo: string;
+  descripcion?: string;
+  fecha?: string; // fecha límite opcional "YYYY-MM-DD"
+  completada: boolean;
+  creada: string; // ISO timestamp de creación
+};
+
 // Configuración global (tabla singleton, fila 0)
 export type Config = {
   dark: boolean; // tema oscuro

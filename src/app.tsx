@@ -17,6 +17,8 @@ import TabHorarios from "./tabs/horarios";
 import TabCalendario from "./tabs/calendario";
 import TabPomodoro from "./tabs/pomodoro";
 import TabExamen from "./tabs/examen";
+import TabTareas from "./tabs/tareas";
+import TabEstadisticas from "./tabs/estadisticas";
 import { exportarJSON, restaurarJSON } from "./exportar";
 
 // ==================== APP PRINCIPAL ====================
@@ -27,7 +29,7 @@ import { exportarJSON, restaurarJSON } from "./exportar";
  */
 export default function App() {
   const { data, refresh } = useDB();
-  const [tab, setTab] = useState<"inicio" | "materias" | "notas" | "simulador" | "horarios" | "calendario" | "pomodoro" | "examen">("inicio");
+  const [tab, setTab] = useState<"inicio" | "materias" | "notas" | "simulador" | "horarios" | "calendario" | "pomodoro" | "examen" | "tareas" | "estadisticas">("inicio");
   const [sesion, setSesion] = useState<any>(null);
   const [authListo, setAuthListo] = useState(false);
 
@@ -90,6 +92,8 @@ export default function App() {
     { id: "calendario", icon: "📅", label: "Calendario" },
     { id: "pomodoro", icon: "⏱️", label: "Pomodoro" },
     { id: "examen", icon: "📝", label: "Examen" },
+    { id: "tareas", icon: "✅", label: "Tareas" },
+    { id: "estadisticas", icon: "📊", label: "Stats" },
   ] as const;
 
   // Semestres registrados + selector del semestre activo (único visible)
@@ -257,6 +261,8 @@ export default function App() {
           {tab === "calendario" && <TabCalendario data={data} t={t} />}
           {tab === "pomodoro" && <TabPomodoro data={data} t={t} />}
           {tab === "examen" && <TabExamen data={data} t={t} />}
+          {tab === "tareas" && <TabTareas data={data} refresh={refresh} t={t} />}
+          {tab === "estadisticas" && <TabEstadisticas data={data} t={t} />}
         </Fade>
 
         <footer className={"mt-8 text-center text-xs " + t.faint}>
@@ -268,7 +274,7 @@ export default function App() {
       {/* --- Navegación inferior fija (solo móvil) --- */}
       <nav className={"fixed bottom-0 inset-x-0 z-50 md:hidden border-t backdrop-blur " + t.navMob}
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-        <div className="grid grid-cols-8 w-full max-w-4xl mx-auto">
+        <div className="grid grid-cols-10 w-full max-w-4xl mx-auto">
           {tabs.map((x) => (
             <button key={x.id} onClick={() => setTab(x.id)}
               className={"flex flex-col items-center gap-0.5 py-2 sm:py-2.5 text-[8px] sm:text-[9px] font-semibold transition-all duration-200 active:scale-90 " +

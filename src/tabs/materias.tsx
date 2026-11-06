@@ -48,6 +48,7 @@ export default function TabMaterias({ data, refresh, t }: any) {
     MiniDB.removeWhere("notas", (n) => n.materiaId === id);
     MiniDB.removeWhere("clases", (c) => c.materiaId === id);
     MiniDB.removeWhere("recursos", (r) => r.materiaId === id);
+    MiniDB.removeWhere("tareas", (t) => t.materiaId === id);
     refresh();
   };
 
@@ -70,6 +71,7 @@ export default function TabMaterias({ data, refresh, t }: any) {
       MiniDB.removeWhere("notas", (n) => n.materiaId === m.id);
       MiniDB.removeWhere("clases", (c) => c.materiaId === m.id);
       MiniDB.removeWhere("recursos", (r) => r.materiaId === m.id);
+      MiniDB.removeWhere("tareas", (t) => t.materiaId === m.id);
     });
     const restantes = (cfg.semestres || []).filter((s) => s !== activo);
     MiniDB.saveConfig({
