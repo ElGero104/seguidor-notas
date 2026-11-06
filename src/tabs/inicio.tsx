@@ -9,6 +9,7 @@ import { abrirZoom } from "./horarios";
 
 /** Barra de progreso del semestre: % transcurrido entre fecha de inicio y fin. */
 function BarraSemestre({ cfg, t, refresh, data }: any) {
+  if (!cfg.activo) return null; // sin semestre activo no hay nada que mostrar
   const rango = (cfg.fechasSemestre || {})[cfg.activo];
   // Sin fechas: mostrar aviso con botón para configurarlas rápido
   if (!rango || !rango.inicio || !rango.fin) {
