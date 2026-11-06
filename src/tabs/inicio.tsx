@@ -158,6 +158,52 @@ export default function TabDashboard({ data, refresh, t, goTab }: any) {
     <div className="space-y-5">
       <BarraSemestre cfg={cfg} t={t} refresh={refresh} data={data} />
 
+      {/* --- Tarjetas visuales de materias --- */}
+      {mats.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {mats.map((m) => {
+            const p = promedio(data.notas, m.id);
+            const ns = (data.notas as Nota[]).filter((n) => n.materiaId === m.id && n.fecha && n.valor === null && (diasHasta(n.fecha) ?? 999) >= 0);
+            const prox = ns.sort((a, b) => (a.fecha! < b.fecha! ? -1 : 1))[0];
+            const dProx = prox ? diasHasta(prox.fecha) : null;
+            const pctEval = (() => {
+              const todas = (data.notas as Nota[]).filter((n) => n.materiaId === m.id);
+              if (!todas.length) return 0;
+              return Math.min(100, todas.filter((n) => n.valor !== null).reduce((s, n) => s + n.porcentaje, 0));
+            })();
+            return (
+              <div key={m.id} className={"relative overflow-hidden rounded-2xl p-4 text-white shadow-lg transition-transform hover:scale-[1.02] bg-gradient-to-br"}
+                style={{ backgroundImage: `linear-gradient(135deg, ${m.color}ee, ${m.color}99)` }}>
+                <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-white/10 blur-xl pointer-events-none" />
+                <div className="relative">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-bold truncate text-sm">{m.nombre}</div>
+                      <div className="text-[11px] text-white/70 truncate">{m.profesor || "Sin profesor"} · {m.creditos} créditos</div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-2xl font-extrabold">{p !== null ? p.toFixed(2) : "—"}</div>
+                      <div className="text-[9px] uppercase font-bold text-white/60">Promedio</div>
+                    </div>
+                  </div>
+                  <div className="mt-2 h-1.5 rounded-full bg-white/20 overflow-hidden">
+                    <div className="h-full bg-white/80 rounded-full transition-all" style={{ width: `${pctEval}%` }} />
+                  </div>
+                  <div className="flex items-center justify-between mt-1.5 text-[10px] text-white/70">
+                    <span>{Math.round(pctEval)}% evaluado</span>
+                    {prox && dProx !== null && (
+                      <span className={dProx <= 1 ? "font-bold text-amber-200" : ""}>
+                        ⏰ {prox.nombre} {dProx === 0 ? "hoy" : `en ${dProx}d`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* --- Vista HOY: agenda completa del día --- */}
       <Fade k="hoy">
         <div className={cardBase + " " + t.card}>

@@ -4,7 +4,7 @@ import { promedio } from "./calculos";
 import { Fade } from "./tema";
 import { useState, useEffect } from "react";
 import { useDB } from "./db";
-import { tokens } from "./tema";
+import { tokens, PALETA_APP } from "./tema";
 import { MiniDB, pullCloud, respaldoAutoNube } from "./db";
 import { UndoToast, setUndo } from "./undo";
 import { subscribeToPush, unsubscribeFromPush } from "./push";
@@ -82,7 +82,7 @@ export default function App() {
     return () => mq.removeEventListener("change", h);
   }, []);
   const darkEfectivo = (cfg.tema_auto ?? true) ? darkSistema : cfg.dark;
-  const t = tokens(darkEfectivo);
+  const t = tokens(darkEfectivo, cfg.color_app);
 
   // Ciclo de 3 estados: auto -> claro -> oscuro -> auto
   const toggleTema = () => {
@@ -97,6 +97,7 @@ export default function App() {
     refresh();
   };
   const temaIcon = (cfg.tema_auto ?? true) ? "🌓" : cfg.dark ? "☀️" : "🌙";
+  const [menuColor, setMenuColor] = useState(false);
   const temaTitle = (cfg.tema_auto ?? true) ? "Tema: automático (sistema) — clic para claro" : cfg.dark ? "Tema: oscuro — clic para automático" : "Tema: claro — clic para oscuro";
 
   const [pushOn, setPushOn] = useState(false);
@@ -202,7 +203,7 @@ export default function App() {
   const nomProxH = proximaClaseH ? (mats.find((m) => m.id === proximaClaseH.materiaId)?.nombre ?? "—") : null;
 
   if (!authListo) return null;
-  if (!sesion) return <LoginInline t={tokens(false)} />;
+  if (!sesion) return <LoginInline t={tokens(false, cfg.color_app)} />;
 
   return (
     <div className={"min-h-screen " + t.page + " transition-colors" + (darkEfectivo ? " dark" : "")}>
@@ -257,6 +258,22 @@ export default function App() {
                   📲
                 </button>
               )}
+              <div className="relative">
+                <button onClick={() => setMenuColor((v) => !v)}
+                  className="w-6 h-6 rounded-full border-2 border-white/40 hover:scale-110 transition"
+                  style={{ backgroundColor: cfg.color_app || "#6366f1" }}
+                  title="Cambiar color de la app" />
+                {menuColor && (
+                  <div className="absolute right-0 top-full mt-2 p-2 rounded-xl border shadow-xl z-50 flex gap-1.5 bg-white dark:bg-slate-800"
+                    onMouseLeave={() => setMenuColor(false)}>
+                    {PALETA_APP.map((p) => (
+                      <button key={p.hex} onClick={() => { MiniDB.saveConfig({ color_app: p.hex }); setMenuColor(false); refresh(); }}
+                        className={"w-7 h-7 rounded-full border-2 transition hover:scale-110 " + ((cfg.color_app || "#6366f1") === p.hex ? "border-slate-800 dark:border-white scale-110" : "border-transparent")}
+                        style={{ backgroundColor: p.hex }} title={p.nombre} />
+                    ))}
+                  </div>
+                )}
+              </div>
               <button onClick={toggleTema}
                 className="text-xl sm:text-2xl rounded-xl px-2.5 py-2 border border-white/25 bg-white/10 hover:bg-white/20 transition"
                 title={temaTitle}>
@@ -343,10 +360,10 @@ export default function App() {
       {/* --- Navegación inferior fija (solo móvil) --- */}
       <nav className={"fixed bottom-0 inset-x-0 z-50 md:hidden border-t backdrop-blur " + t.navMob}
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-        <div className="grid grid-cols-11 w-full max-w-4xl mx-auto">
+        <div className="flex w-full max-w-4xl mx-auto overflow-x-auto scrollbar-none">
           {tabs.map((x) => (
             <button key={x.id} onClick={() => setTab(x.id)}
-              className={"flex flex-col items-center gap-0.5 py-2 sm:py-2.5 text-[8px] sm:text-[9px] font-semibold transition-all duration-200 active:scale-90 " +
+              className={"flex flex-col items-center gap-0.5 py-2 px-3 sm:py-2.5 text-[9px] font-semibold transition-all duration-200 active:scale-90 flex-shrink-0 " +
                 (tab === x.id ? "text-indigo-500 -translate-y-0.5" : t.sub)}>
               <span className={"text-lg sm:text-xl leading-none transition-transform " + (tab === x.id ? "scale-110" : "")}>{x.icon}</span>
               <span className="truncate max-w-full px-0.5">{x.label}</span>

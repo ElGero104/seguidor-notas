@@ -76,6 +76,7 @@ export type Tarea = {
 export type Config = {
   dark: boolean; // tema oscuro
   tema_auto: boolean; // true = seguir prefers-color-scheme del sistema
+  color_app: string; // color principal de la app (hex), ej: "#6366f1"
   nota_minima: number; // para "ganar" la materia (ej: 3.0)
   nota_ok: number; // rango de color ámbar->verde (ej: 4.0)
   archivados: string[]; // semestres archivados

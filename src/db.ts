@@ -20,7 +20,7 @@ import { COLORS } from "./tema";
  * localStorage ya no se usa para datos; solo queda la sesión de Auth y el
  * contador de sesiones Pomodoro.
  */
-export const CONFIG_DEFAULT: Config = { dark: false, tema_auto: true, nota_minima: 3.0, nota_ok: 4.0, archivados: [], activo: "", semestres: [], fechasSemestre: {} };
+export const CONFIG_DEFAULT: Config = { dark: false, tema_auto: true, color_app: "#6366f1", nota_minima: 3.0, nota_ok: 4.0, archivados: [], activo: "", semestres: [], fechasSemestre: {} };
 
 export const DB_SCHEMA = {
   materias: [] as Materia[],
@@ -142,6 +142,7 @@ export async function syncConfigCloud(cfg: Config) {
       user_id: uidUser,
       dark: cfg.dark,
       tema_auto: cfg.tema_auto ?? true,
+      color_app: cfg.color_app ?? "#6366f1",
       nota_minima: cfg.nota_minima,
       nota_ok: cfg.nota_ok,
       archivados: cfg.archivados,
@@ -195,7 +196,7 @@ export async function pullCloud() {
       get("tareas", "id,materia_id,titulo,descripcion,fecha,completada,creada"),
       get("archivos", "id,materia_id,nombre,extension,storage_path,tamano,subido"),
       get("semestres", "nombre,activo"),
-      get("config_usuario", "dark,tema_auto,nota_minima,nota_ok,archivados,activo,semestres,fechas_semestre"),
+      get("config_usuario", "dark,tema_auto,color_app,nota_minima,nota_ok,archivados,activo,semestres,fechas_semestre"),
     ]);
     if (sems.length) {
       const nombres = sems.map((s: any) => s.nombre);
@@ -207,6 +208,7 @@ export async function pullCloud() {
         ...db.config[0],
         dark: cfgRow[0].dark,
         tema_auto: cfgRow[0].tema_auto ?? true,
+        color_app: cfgRow[0].color_app ?? "#6366f1",
         nota_minima: cfgRow[0].nota_minima,
         nota_ok: cfgRow[0].nota_ok,
         archivados: cfgRow[0].archivados || [],

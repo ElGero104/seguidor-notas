@@ -36,3 +36,6 @@ ON CONFLICT (id) DO UPDATE SET public = true;
 CREATE POLICY "apuntes_lectura" ON storage.objects FOR SELECT USING (bucket_id = 'apuntes');
 CREATE POLICY "apuntes_subida" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'apuntes' AND (storage.foldername(name))[1] = auth.uid()::text);
 CREATE POLICY "apuntes_borrado" ON storage.objects FOR DELETE USING (bucket_id = 'apuntes' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Color principal personalizable de la app
+ALTER TABLE public.config_usuario ADD COLUMN IF NOT EXISTS color_app text DEFAULT '#6366f1';
