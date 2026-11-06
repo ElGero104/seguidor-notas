@@ -125,6 +125,15 @@ export default function App() {
     { id: "archivos", icon: "📁", label: "Archivos" },
   ] as const;
 
+  // Grupos para navegar sin saturar: Académico / Organización / Personal
+  const GRUPOS: { nombre: string; icono: string; ids: string[] }[] = [
+    { nombre: "Académico", icono: "🎓", ids: ["inicio", "materias", "notas", "simulador", "estadisticas"] },
+    { nombre: "Organización", icono: "🗂️", ids: ["horarios", "calendario", "tareas", "archivos"] },
+    { nombre: "Personal", icono: "🧘", ids: ["pomodoro", "examen"] },
+  ];
+  const tabInfo = (id: string) => tabs.find((x) => x.id === id)!;
+  const [grupoAbierto, setGrupoAbierto] = useState<string | null>(null);
+
   // Semestres registrados + selector del semestre activo (único visible)
   const semestres: string[] = cfg.semestres || [];
   const cambiarSemestre = (val: string) => {
@@ -324,16 +333,35 @@ export default function App() {
         </header>
 
         {/* --- Navegación superior (solo escritorio) --- */}
-        <nav className={"hidden md:flex flex-wrap gap-1.5 mb-6 rounded-2xl p-1.5 border shadow-lg w-fit mx-auto " + t.nav}>
-          {tabs.map((x) => (
-            <button key={x.id} onClick={() => setTab(x.id)}
-              className={"px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 active:scale-95 " +
-                (tab === x.id
-                  ? "bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-600/30"
-                  : t.navIn)}>
-              {x.icon} {x.label}
-            </button>
-          ))}
+        <nav className={"hidden md:flex flex-wrap gap-1.5 mb-6 rounded-2xl p-1.5 border shadow-lg w-fit mx-auto relative " + t.nav}>
+          {GRUPOS.map((g) => {
+            const activo = g.ids.includes(tab);
+            return (
+              <div key={g.nombre} className="relative">
+                <button onClick={() => setGrupoAbierto(grupoAbierto === g.nombre ? null : g.nombre)}
+                  className={"px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 active:scale-95 flex items-center gap-1.5 " +
+                    (activo ? "bg-gradient-to-r " + t.grad + " text-white shadow-lg" : t.navIn)}>
+                  {g.icono} {g.nombre}
+                  <span className={"text-[9px] transition-transform " + (grupoAbierto === g.nombre ? "rotate-180" : "")}>▼</span>
+                </button>
+                {grupoAbierto === g.nombre && (
+                  <div className={"absolute top-full left-0 mt-1 p-1.5 rounded-xl border shadow-xl z-40 flex flex-col gap-0.5 min-w-[160px] " + t.card}
+                    onMouseLeave={() => setGrupoAbierto(null)}>
+                    {g.ids.map((id) => {
+                      const x = tabInfo(id);
+                      return (
+                        <button key={id} onClick={() => { setTab(id as any); setGrupoAbierto(null); }}
+                          className={"px-3 py-2 rounded-lg text-sm font-medium text-left transition-all flex items-center gap-2 " +
+                            (tab === id ? t.softBtn : t.navIn)}>
+                          <span>{x.icon}</span> {x.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
 
         {/* Animación de entrada al cambiar de pestaña */}
@@ -363,10 +391,10 @@ export default function App() {
         <div className="flex w-full max-w-4xl mx-auto overflow-x-auto scrollbar-none">
           {tabs.map((x) => (
             <button key={x.id} onClick={() => setTab(x.id)}
-              className={"flex flex-col items-center gap-0.5 py-2 px-3 sm:py-2.5 text-[9px] font-semibold transition-all duration-200 active:scale-90 flex-shrink-0 " +
+              className={"flex flex-col items-center gap-0 py-2 px-2.5 text-[8px] font-semibold transition-all duration-200 active:scale-90 flex-shrink-0 " +
                 (tab === x.id ? "text-indigo-500 -translate-y-0.5" : t.sub)}>
-              <span className={"text-lg sm:text-xl leading-none transition-transform " + (tab === x.id ? "scale-110" : "")}>{x.icon}</span>
-              <span className="truncate max-w-full px-0.5">{x.label}</span>
+              <span className={"text-base leading-none transition-transform " + (tab === x.id ? "scale-125" : "")}>{x.icon}</span>
+              <span className="truncate max-w-full">{x.label}</span>
             </button>
           ))}
         </div>
