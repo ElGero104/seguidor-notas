@@ -79,7 +79,7 @@ export default function VisorArchivo({ archivo, t, onClose, refresh }: any) {
               {guardando ? "⏳ Guardando…" : "💾 Guardar"}
             </button>
           )}
-          <button onClick={onClose} className="text-xl px-2 hover:opacity-70 " + t.sub>✕</button>
+          <button onClick={onClose} className={"text-xl px-2 hover:opacity-70 " + t.sub}>✕</button>
         </div>
 
         {/* Cuerpo */}
