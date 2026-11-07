@@ -17,6 +17,13 @@ export default function TabCalendario({ data, t }: any) {
   const [diaSel, setDiaSel] = useState<string | null>(null); // "YYYY-MM-DD"
   const [vista, setVista] = useState<"entregas" | "clases">("clases");
   const [modo, setModo] = useState<"mes" | "semana">("semana");
+  // Lunes de la semana mostrada en modo semana (estado propio, no derivado del mes)
+  const hoyRef = new Date(); hoyRef.setHours(0, 0, 0, 0);
+  const [lunSem, setLunSem] = useState(() => {
+    const d = new Date(hoyRef);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return d;
+  });
 
   const pad = (n: number) => String(n).padStart(2, "0");
   const fechaStr = (a: number, m: number, d: number) => `${a}-${pad(m + 1)}-${pad(d)}`;
@@ -66,14 +73,7 @@ export default function TabCalendario({ data, t }: any) {
   }, [data.clases, anio, mes, cfg.activo, rango.inicio, rango.fin]);
 
   // ---- Vista semana: lunes de la semana actual del mes mostrado ----
-  const lunesSemana = useMemo(() => {
-    // semana que contiene el día 15 del mes (o hoy si es el mes actual)
-    const ref = (hoy.getFullYear() === anio && hoy.getMonth() === mes) ? hoy.getDate() : 15;
-    const d = new Date(anio, mes, ref);
-    const dow = (d.getDay() + 6) % 7;
-    d.setDate(d.getDate() - dow);
-    return d;
-  }, [anio, mes]);
+  const lunesSemana = lunSem;
 
   const diasSemana: string[] = [];
   for (let i = 0; i < 7; i++) {
@@ -94,9 +94,10 @@ export default function TabCalendario({ data, t }: any) {
       if (m > 11) { m = 0; a++; }
       setMes(m); setAnio(a);
     } else {
-      const d = new Date(lunesSemana);
+      const d = new Date(lunSem);
       d.setDate(d.getDate() + delta * 7);
-      setAnio(d.getFullYear()); setMes(d.getMonth());
+      setLunSem(d);
+      setAnio(d.getFullYear()); setMes(d.getMonth()); // mantiene clasesPorFecha en rango
     }
   };
 
